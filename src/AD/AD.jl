@@ -85,9 +85,19 @@ function _gradient(::PureJuliaBackend, f, x; eps=1e-7)
     return g
 end
 
-# Reactant implementation (placeholder)
+# Reactant implementation (placeholder - overridden by extension when Reactant is loaded)
 function _gradient(::ReactantBackend, f, x)
-    error("ReactantBackend not yet implemented. Use `set_backend!(ForwardDiffBackend())` for now.")
+    error("""
+    ReactantBackend requires Reactant.jl to be loaded.
+
+    To use GPU acceleration:
+        using Pkg
+        Pkg.add("Reactant")
+        using Reactant
+        using Quasar
+
+    Then set_backend!(ReactantBackend()) will work.
+    """)
 end
 
 # ============================================================================
@@ -123,7 +133,7 @@ function _hessian(::PureJuliaBackend, f, x; eps=1e-5)
 end
 
 function _hessian(::ReactantBackend, f, x)
-    error("ReactantBackend not yet implemented.")
+    error("ReactantBackend requires Reactant.jl. See `_gradient` error for setup instructions.")
 end
 
 # ============================================================================
@@ -157,7 +167,7 @@ function _jacobian(::PureJuliaBackend, f, x; eps=1e-7)
 end
 
 function _jacobian(::ReactantBackend, f, x)
-    error("ReactantBackend not yet implemented.")
+    error("ReactantBackend requires Reactant.jl. See `_gradient` error for setup instructions.")
 end
 
 # ============================================================================
