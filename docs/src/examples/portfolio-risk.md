@@ -173,10 +173,10 @@ end
 # Generate scenarios
 pnls = simulate_portfolio_pnl(portfolio, state, 10000)
 
-# Compute risk metrics
-var_95 = compute(VaR(0.95), -pnls)  # Note: VaR uses losses, not P&L
-var_99 = compute(VaR(0.99), -pnls)
-cvar_95 = compute(CVaR(0.95), -pnls)
+# Compute risk metrics (negate to express as positive loss amounts)
+var_95 = -compute(VaR(0.95), pnls)
+var_99 = -compute(VaR(0.99), pnls)
+cvar_95 = -compute(CVaR(0.95), pnls)
 
 println("\nRisk Metrics (1-day, simulated):")
 println("  95% VaR:  \$$(round(var_95, digits=2))")
@@ -187,9 +187,9 @@ println("  95% CVaR: \$$(round(cvar_95, digits=2))")
 **Output:**
 ```
 Risk Metrics (1-day, simulated):
-  95% VaR:  $-125.78
-  99% VaR:  $-181.76
-  95% CVaR: $-160.04
+  95% VaR:  $101.80
+  99% VaR:  $138.29
+  95% CVaR: $124.69
 ```
 
 ### Greeks-Based VaR
@@ -322,14 +322,15 @@ hedge_call_vega = compute_greeks(hedge_call, state).vega
 hedge_put_vega = compute_greeks(hedge_put, state).vega
 straddle_vega = hedge_call_vega + hedge_put_vega
 
-contracts_needed = -total_vega / straddle_vega
-println("Hedge with $(round(contracts_needed, digits=1)) AAPL 150 straddles (1M)")
+contracts_needed = total_vega / straddle_vega
+direction = contracts_needed > 0 ? "Short" : "Long"
+println("$direction $(round(abs(contracts_needed), digits=1)) AAPL 150 straddles (1M) to hedge")
 ```
 
 **Output:**
 ```
 Vega Exposure: 21.52
-Hedge with -62.6 AAPL 150 straddles (1M)
+Short 62.6 AAPL 150 straddles (1M) to hedge
 ```
 
 ## Attribution Analysis
