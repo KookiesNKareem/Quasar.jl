@@ -22,7 +22,8 @@ export gradient, hessian, jacobian, current_backend, set_backend!
 # Instruments
 include("Instruments/Instruments.jl")
 using .Instruments
-export Stock, EuropeanOption, AmericanOption, AsianOption
+export Stock, EuropeanOption, AmericanOption, AsianOption, price, black_scholes
+export GreeksResult, compute_greeks, analytical_greeks
 
 # Portfolio
 include("Portfolio/Portfolio.jl")
