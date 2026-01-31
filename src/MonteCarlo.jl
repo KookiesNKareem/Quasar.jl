@@ -1,5 +1,11 @@
 module MonteCarlo
 
+# TODO: Add multi-threading for path simulation (parallelization)
+# TODO: Add control variates for variance reduction
+# TODO: Add importance sampling
+# TODO: Add moment matching
+# TODO: Add Brownian bridge construction
+
 using Random
 using Statistics: mean, std
 using Sobol: SobolSeq, next!
@@ -136,6 +142,9 @@ end
 
 Generate a single Heston path using full truncation scheme.
 """
+# TODO: Document full truncation scheme algorithm
+# TODO: Add QE (quadratic exponential) scheme option for better accuracy
+# TODO: Add Feller condition check/warning
 function simulate_heston(S0, T, nsteps, dynamics::HestonDynamics; rng=Random.default_rng())
     dt = T / nsteps
     sqrt_dt = sqrt(dt)
@@ -268,6 +277,8 @@ end
 
 Result of Monte Carlo simulation.
 """
+# TODO: Add Base.show() for readable output
+# TODO: Add confidence level as field (not hardcoded 95%)
 struct MCResult{T}
     price::T
     stderr::T
@@ -453,6 +464,12 @@ Price an American option using the Longstaff-Schwartz Monte Carlo method.
 2. Work backwards from expiry
 3. At each step, regress continuation value on polynomial basis of spot
 4. Exercise when intrinsic value > continuation value
+"""
+# TODO: Validate nsteps vs number of exercise dates
+# TODO: Add higher-order polynomial basis option (Laguerre, Hermite)
+# TODO: Add path degeneracy check (zero variance)
+# TODO: Support Heston dynamics (currently GBM only)
+"""
 
 # Arguments
 - `S0` - Initial spot price

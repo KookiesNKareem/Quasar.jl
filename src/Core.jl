@@ -114,8 +114,8 @@ end
 # Outer constructor for type inference
 ImmutableDict(d::Dict{K,V}) where {K,V} = ImmutableDict{K,V}(d)
 
-Base.getindex(d::ImmutableDict, k) = d.data[k]
-Base.haskey(d::ImmutableDict, k) = haskey(d.data, k)
+@inline Base.getindex(d::ImmutableDict, k) = d.data[k]
+@inline Base.haskey(d::ImmutableDict, k) = haskey(d.data, k)
 Base.keys(d::ImmutableDict) = keys(d.data)
 Base.values(d::ImmutableDict) = values(d.data)
 Base.length(d::ImmutableDict) = length(d.data)
@@ -140,8 +140,26 @@ struct MarketState{P,R,V,T}
     timestamp::T
 end
 
-# Keyword constructor for convenience
+# Keyword constructor for convenience with validation
 function MarketState(; prices, rates, volatilities, timestamp)
+    # Validate prices > 0
+    for (sym, p) in prices
+        p > 0 || throw(ArgumentError("Price for $sym must be positive, got $p"))
+        isfinite(p) || throw(ArgumentError("Price for $sym must be finite, got $p"))
+    end
+
+    # Validate rates are reasonable (-1 to 1, i.e., -100% to 100%)
+    for (ccy, r) in rates
+        -1 <= r <= 1 || @warn "Rate for $ccy seems unusual: $r (expected between -100% and 100%)"
+        isfinite(r) || throw(ArgumentError("Rate for $ccy must be finite, got $r"))
+    end
+
+    # Validate volatilities > 0
+    for (sym, v) in volatilities
+        v > 0 || throw(ArgumentError("Volatility for $sym must be positive, got $v"))
+        isfinite(v) || throw(ArgumentError("Volatility for $sym must be finite, got $v"))
+    end
+
     # Convert to immutable dictionaries for safety
     MarketState(
         ImmutableDict(prices),
@@ -149,6 +167,31 @@ function MarketState(; prices, rates, volatilities, timestamp)
         ImmutableDict(volatilities),
         timestamp
     )
+end
+
+# Pretty printing
+function Base.show(io::IO, state::MarketState)
+    print(io, "MarketState(")
+    print(io, length(state.prices), " prices, ")
+    print(io, length(state.rates), " rates, ")
+    print(io, length(state.volatilities), " vols, ")
+    print(io, "t=", state.timestamp, ")")
+end
+
+function Base.show(io::IO, ::MIME"text/plain", state::MarketState)
+    println(io, "MarketState @ ", state.timestamp)
+    println(io, "  Prices:")
+    for (k, v) in state.prices
+        println(io, "    $k: $v")
+    end
+    println(io, "  Rates:")
+    for (k, v) in state.rates
+        println(io, "    $k: $(round(v * 100, digits=2))%")
+    end
+    println(io, "  Volatilities:")
+    for (k, v) in state.volatilities
+        println(io, "    $k: $(round(v * 100, digits=2))%")
+    end
 end
 
 # ============================================================================

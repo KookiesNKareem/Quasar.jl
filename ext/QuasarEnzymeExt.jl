@@ -10,6 +10,8 @@ using Enzyme
 # Enzyme Backend Implementation
 # ============================================================================
 
+# TODO: Add in-place gradient for memory efficiency
+# TODO: Add batch differentiation support
 function Quasar.AD._gradient(b::EnzymeBackend, f, x)
     if b.mode == :reverse
         dx = zero(x)
@@ -17,6 +19,7 @@ function Quasar.AD._gradient(b::EnzymeBackend, f, x)
         return dx
     else
         # Forward mode - compute component by component
+        # FIXME: Slow for large vectors - consider chunking
         n = length(x)
         grad = similar(x)
         for i in 1:n

@@ -1,3 +1,10 @@
+# TODO: Add code coverage badge to README
+# TODO: Add linting/formatting check (JuliaFormatter)
+# TODO: Add docstring coverage check
+# TODO: Add performance regression detection (BenchmarkCI)
+# TODO: Add GPU CI job (CUDA/Reactant runners)
+# TODO: Add macOS and Windows test matrix
+# TODO: Test with Julia 1.10 for broader compatibility
 name: CI
 on:
   push:

@@ -4,8 +4,13 @@ using LinearAlgebra
 using Distributions: Normal, cdf, pdf
 
 export
+    # Day count conventions
+    DayCountConvention, ACT360, ACT365, Thirty360, ACTACT,
+    year_fraction,
     # Curve types
     RateCurve, DiscountCurve, ZeroCurve, ForwardCurve,
+    # Parametric curves
+    NelsonSiegelCurve, SvenssonCurve, fit_nelson_siegel, fit_svensson,
     # Curve operations
     discount, zero_rate, forward_rate, instantaneous_forward,
     # Interpolation
@@ -24,6 +29,162 @@ export
     # IR Derivatives
     Caplet, Floorlet, Cap, Floor, Swaption,
     black_caplet, black_cap
+
+# ============================================================================
+# Day Count Conventions
+# ============================================================================
+
+"""
+    DayCountConvention
+
+Abstract type for day count conventions used to calculate year fractions
+between two dates.
+"""
+abstract type DayCountConvention end
+
+"""
+    ACT360 <: DayCountConvention
+
+Actual/360 day count: actual days divided by 360.
+Common for money market instruments (LIBOR, EURIBOR).
+"""
+struct ACT360 <: DayCountConvention end
+
+"""
+    ACT365 <: DayCountConvention
+
+Actual/365 (Fixed) day count: actual days divided by 365.
+Common for GBP and JPY markets.
+"""
+struct ACT365 <: DayCountConvention end
+
+"""
+    Thirty360 <: DayCountConvention
+
+30/360 (Bond Basis) day count: assumes 30-day months and 360-day years.
+Common for US corporate bonds.
+"""
+struct Thirty360 <: DayCountConvention end
+
+"""
+    ACTACT <: DayCountConvention
+
+Actual/Actual (ISDA) day count: actual days in each period.
+Standard for government bonds in many markets.
+"""
+struct ACTACT <: DayCountConvention end
+
+"""
+    year_fraction(start_date, end_date, convention::DayCountConvention) -> Float64
+
+Calculate the year fraction between two dates using the specified day count convention.
+
+# Arguments
+- `start_date` - Start date (as Date or day count from reference)
+- `end_date` - End date (as Date or day count from reference)
+- `convention` - Day count convention to use
+
+# Example
+```julia
+using Dates
+year_fraction(Date(2024,1,1), Date(2024,7,1), ACT360())  # ≈ 0.5028
+year_fraction(Date(2024,1,1), Date(2024,7,1), ACT365())  # ≈ 0.4959
+year_fraction(Date(2024,1,1), Date(2024,7,1), Thirty360())  # = 0.5
+```
+"""
+function year_fraction end
+
+# For simple numeric time (already in years), just return the difference
+year_fraction(t1::Real, t2::Real, ::DayCountConvention) = Float64(t2 - t1)
+
+# Date-based implementations (requires Dates to be available)
+function year_fraction(d1, d2, ::ACT360)
+    days = _day_count(d1, d2)
+    days / 360.0
+end
+
+function year_fraction(d1, d2, ::ACT365)
+    days = _day_count(d1, d2)
+    days / 365.0
+end
+
+function year_fraction(d1, d2, ::Thirty360)
+    y1, m1, day1 = _year_month_day(d1)
+    y2, m2, day2 = _year_month_day(d2)
+
+    # Adjust day counts per 30/360 convention
+    day1 = min(day1, 30)
+    if day1 == 30
+        day2 = min(day2, 30)
+    end
+
+    (360 * (y2 - y1) + 30 * (m2 - m1) + (day2 - day1)) / 360.0
+end
+
+function year_fraction(d1, d2, ::ACTACT)
+    # Simplified ISDA implementation: actual days / average year length
+    days = _day_count(d1, d2)
+    y1, _, _ = _year_month_day(d1)
+    y2, _, _ = _year_month_day(d2)
+
+    # Handle same year case
+    if y1 == y2
+        return days / (_is_leap_year(y1) ? 366.0 : 365.0)
+    end
+
+    # For multi-year periods, weight by actual days in each year
+    total = 0.0
+    for y in y1:y2
+        year_days = _is_leap_year(y) ? 366.0 : 365.0
+        if y == y1
+            # Days remaining in first year
+            year_end = _make_date(y + 1, 1, 1)
+            total += _day_count(d1, year_end) / year_days
+        elseif y == y2
+            # Days in final year
+            year_start = _make_date(y, 1, 1)
+            total += _day_count(year_start, d2) / year_days
+        else
+            # Full year
+            total += 1.0
+        end
+    end
+    total
+end
+
+# Helper functions for date handling
+# These work with both Date objects and simple (year, month, day) tuples
+
+function _day_count(d1, d2)
+    # Try to use Dates if available, otherwise assume numeric
+    if isdefined(Main, :Dates)
+        return Int(Main.Dates.value(d2) - Main.Dates.value(d1))
+    else
+        # Assume d1, d2 are already day numbers
+        return Int(d2 - d1)
+    end
+end
+
+function _year_month_day(d)
+    if isdefined(Main, :Dates)
+        return Main.Dates.year(d), Main.Dates.month(d), Main.Dates.day(d)
+    else
+        # Assume d is a tuple (y, m, d)
+        return d[1], d[2], d[3]
+    end
+end
+
+function _make_date(y, m, d)
+    if isdefined(Main, :Dates)
+        return Main.Dates.Date(y, m, d)
+    else
+        return (y, m, d)
+    end
+end
+
+function _is_leap_year(y)
+    (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0)
+end
 
 # ============================================================================
 # Interpolation Methods
@@ -127,6 +288,7 @@ struct DiscountCurve <: RateCurve
     values::Vector{Float64}
     interp::InterpolationMethod
 
+    # TODO: Check that discount factors are decreasing with time
     function DiscountCurve(times, values; interp::InterpolationMethod=LogLinearInterp())
         @assert length(times) == length(values)
         @assert all(values .> 0) "Discount factors must be positive"
@@ -270,6 +432,319 @@ function ZeroCurve(dc::DiscountCurve)
 end
 
 # ============================================================================
+# Parametric Yield Curves (Nelson-Siegel, Svensson)
+# ============================================================================
+
+"""
+    NelsonSiegelCurve(β0, β1, β2, τ)
+
+Nelson-Siegel parametric yield curve model.
+
+The zero rate at maturity T is given by:
+```
+r(T) = β₀ + β₁ * (1 - exp(-T/τ)) / (T/τ) + β₂ * ((1 - exp(-T/τ)) / (T/τ) - exp(-T/τ))
+```
+
+# Parameters
+- `β0` - Long-term rate level (asymptotic rate as T → ∞)
+- `β1` - Short-term component (controls slope at origin)
+- `β2` - Medium-term component (controls curvature/hump)
+- `τ` - Decay factor (time at which medium-term component reaches maximum)
+
+# Example
+```julia
+curve = NelsonSiegelCurve(0.05, -0.02, 0.01, 2.0)
+zero_rate(curve, 5.0)  # Get 5-year zero rate
+```
+"""
+struct NelsonSiegelCurve <: RateCurve
+    β0::Float64
+    β1::Float64
+    β2::Float64
+    τ::Float64
+
+    function NelsonSiegelCurve(β0, β1, β2, τ)
+        τ > 0 || throw(ArgumentError("τ must be positive, got $τ"))
+        new(β0, β1, β2, τ)
+    end
+end
+
+"""
+    SvenssonCurve(β0, β1, β2, β3, τ1, τ2)
+
+Svensson extension of Nelson-Siegel with an additional hump component.
+
+The zero rate at maturity T is given by:
+```
+r(T) = β₀ + β₁ * g1(T/τ1) + β₂ * h1(T/τ1) + β₃ * h2(T/τ2)
+```
+where:
+- g1(x) = (1 - exp(-x)) / x
+- h1(x) = g1(x) - exp(-x)
+- h2(x) = g1(x, τ2) - exp(-T/τ2)
+
+# Parameters
+- `β0` - Long-term rate level
+- `β1` - Short-term component
+- `β2` - First medium-term component (hump at τ1)
+- `β3` - Second medium-term component (hump at τ2)
+- `τ1` - First decay factor
+- `τ2` - Second decay factor
+
+# Example
+```julia
+curve = SvenssonCurve(0.05, -0.02, 0.01, 0.005, 2.0, 5.0)
+zero_rate(curve, 10.0)  # Get 10-year zero rate
+```
+"""
+struct SvenssonCurve <: RateCurve
+    β0::Float64
+    β1::Float64
+    β2::Float64
+    β3::Float64
+    τ1::Float64
+    τ2::Float64
+
+    function SvenssonCurve(β0, β1, β2, β3, τ1, τ2)
+        τ1 > 0 || throw(ArgumentError("τ1 must be positive, got $τ1"))
+        τ2 > 0 || throw(ArgumentError("τ2 must be positive, got $τ2"))
+        new(β0, β1, β2, β3, τ1, τ2)
+    end
+end
+
+# Nelson-Siegel loading functions
+function _ns_g1(x::Float64)
+    # g1(x) = (1 - exp(-x)) / x, with limit g1(0) = 1
+    abs(x) < 1e-10 ? 1.0 - x/2 + x^2/6 : (1 - exp(-x)) / x
+end
+
+function _ns_h1(x::Float64)
+    # h1(x) = g1(x) - exp(-x)
+    _ns_g1(x) - exp(-x)
+end
+
+# Zero rate implementations
+function zero_rate(curve::NelsonSiegelCurve, T::Float64)
+    T <= 0 && return curve.β0 + curve.β1  # Instantaneous rate
+    x = T / curve.τ
+    curve.β0 + curve.β1 * _ns_g1(x) + curve.β2 * _ns_h1(x)
+end
+
+function zero_rate(curve::SvenssonCurve, T::Float64)
+    T <= 0 && return curve.β0 + curve.β1  # Instantaneous rate
+    x1 = T / curve.τ1
+    x2 = T / curve.τ2
+    curve.β0 + curve.β1 * _ns_g1(x1) + curve.β2 * _ns_h1(x1) + curve.β3 * _ns_h1(x2)
+end
+
+# Discount factors
+function discount(curve::NelsonSiegelCurve, T::Float64)
+    T <= 0 && return 1.0
+    exp(-zero_rate(curve, T) * T)
+end
+
+function discount(curve::SvenssonCurve, T::Float64)
+    T <= 0 && return 1.0
+    exp(-zero_rate(curve, T) * T)
+end
+
+# Instantaneous forward rate: f(T) = -d/dT ln(P(0,T)) = r(T) + T * dr/dT
+function instantaneous_forward(curve::NelsonSiegelCurve, T::Float64)
+    T <= 0 && return curve.β0 + curve.β1
+    x = T / curve.τ
+    ex = exp(-x)
+
+    # r(T) = β0 + β1 * g1 + β2 * h1
+    # f(T) = r(T) + T * dr/dT
+    # dr/dT = (β1/τ) * dg1/dx + (β2/τ) * dh1/dx
+    # where dg1/dx = (x*exp(-x) - (1-exp(-x)))/x² = (exp(-x) - g1)/x
+    # and dh1/dx = dg1/dx + exp(-x) = (exp(-x) - g1)/x + exp(-x)
+
+    g1 = _ns_g1(x)
+    dg1_dx = abs(x) < 1e-10 ? -0.5 + x/3 : (ex - g1) / x
+    dh1_dx = dg1_dx + ex
+
+    r = curve.β0 + curve.β1 * g1 + curve.β2 * _ns_h1(x)
+    dr_dT = (curve.β1 * dg1_dx + curve.β2 * dh1_dx) / curve.τ
+
+    r + T * dr_dT
+end
+
+function instantaneous_forward(curve::SvenssonCurve, T::Float64)
+    # Use numerical differentiation for Svensson
+    ε = 1e-6
+    df_plus = discount(curve, T + ε)
+    df_minus = discount(curve, max(0.0, T - ε))
+    -log(df_plus / df_minus) / (2ε)
+end
+
+"""
+    fit_nelson_siegel(maturities, rates; initial_guess=nothing) -> NelsonSiegelCurve
+
+Fit a Nelson-Siegel curve to observed zero rates using least squares.
+
+# Arguments
+- `maturities` - Vector of maturities (in years)
+- `rates` - Vector of observed zero rates
+- `initial_guess` - Optional (β0, β1, β2, τ) starting point
+
+# Returns
+A fitted NelsonSiegelCurve
+
+# Example
+```julia
+mats = [0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0]
+rates = [0.02, 0.022, 0.025, 0.028, 0.032, 0.035, 0.037]
+curve = fit_nelson_siegel(mats, rates)
+```
+"""
+function fit_nelson_siegel(maturities::Vector{Float64}, rates::Vector{Float64};
+                           initial_guess::Union{Nothing, NTuple{4,Float64}}=nothing)
+    @assert length(maturities) == length(rates)
+    @assert length(maturities) >= 4 "Need at least 4 data points to fit Nelson-Siegel"
+
+    # Default initial guess
+    if initial_guess === nothing
+        β0_init = rates[end]  # Long rate
+        β1_init = rates[1] - rates[end]  # Slope
+        β2_init = 0.0  # Curvature
+        τ_init = 2.0  # Typical decay
+    else
+        β0_init, β1_init, β2_init, τ_init = initial_guess
+    end
+
+    # Simple gradient descent optimization
+    params = [β0_init, β1_init, β2_init, τ_init]
+
+    function loss(p)
+        β0, β1, β2, τ = p
+        τ = max(τ, 0.01)  # Keep τ positive
+        curve = NelsonSiegelCurve(β0, β1, β2, τ)
+        sum((zero_rate(curve, t) - r)^2 for (t, r) in zip(maturities, rates))
+    end
+
+    # Gradient-free Nelder-Mead simplex optimization
+    params = _nelder_mead(loss, params, 1000, 1e-10)
+
+    NelsonSiegelCurve(params[1], params[2], params[3], max(params[4], 0.01))
+end
+
+"""
+    fit_svensson(maturities, rates; initial_guess=nothing) -> SvenssonCurve
+
+Fit a Svensson curve to observed zero rates using least squares.
+
+# Arguments
+- `maturities` - Vector of maturities (in years)
+- `rates` - Vector of observed zero rates
+- `initial_guess` - Optional (β0, β1, β2, β3, τ1, τ2) starting point
+
+# Returns
+A fitted SvenssonCurve
+"""
+function fit_svensson(maturities::Vector{Float64}, rates::Vector{Float64};
+                      initial_guess::Union{Nothing, NTuple{6,Float64}}=nothing)
+    @assert length(maturities) == length(rates)
+    @assert length(maturities) >= 6 "Need at least 6 data points to fit Svensson"
+
+    # Default initial guess
+    if initial_guess === nothing
+        β0_init = rates[end]
+        β1_init = rates[1] - rates[end]
+        β2_init = 0.0
+        β3_init = 0.0
+        τ1_init = 2.0
+        τ2_init = 5.0
+    else
+        β0_init, β1_init, β2_init, β3_init, τ1_init, τ2_init = initial_guess
+    end
+
+    params = [β0_init, β1_init, β2_init, β3_init, τ1_init, τ2_init]
+
+    function loss(p)
+        β0, β1, β2, β3, τ1, τ2 = p
+        τ1 = max(τ1, 0.01)
+        τ2 = max(τ2, 0.01)
+        curve = SvenssonCurve(β0, β1, β2, β3, τ1, τ2)
+        sum((zero_rate(curve, t) - r)^2 for (t, r) in zip(maturities, rates))
+    end
+
+    params = _nelder_mead(loss, params, 2000, 1e-10)
+
+    SvenssonCurve(params[1], params[2], params[3], params[4],
+                  max(params[5], 0.01), max(params[6], 0.01))
+end
+
+# Simple Nelder-Mead optimizer (no external dependencies)
+function _nelder_mead(f, x0::Vector{Float64}, max_iter::Int, tol::Float64)
+    n = length(x0)
+
+    # Initialize simplex
+    simplex = Vector{Vector{Float64}}(undef, n + 1)
+    simplex[1] = copy(x0)
+    for i in 2:n+1
+        simplex[i] = copy(x0)
+        simplex[i][i-1] += 0.1 * max(abs(x0[i-1]), 1.0)
+    end
+
+    # Evaluate function at all vertices
+    fvals = [f(v) for v in simplex]
+
+    α, γ, ρ, σ = 1.0, 2.0, 0.5, 0.5  # Standard parameters
+
+    for _ in 1:max_iter
+        # Sort vertices by function value
+        order = sortperm(fvals)
+        simplex = simplex[order]
+        fvals = fvals[order]
+
+        # Check convergence
+        if maximum(abs(fvals[i] - fvals[1]) for i in 2:n+1) < tol
+            break
+        end
+
+        # Centroid of best n points
+        x0_new = sum(simplex[1:n]) / n
+
+        # Reflection
+        xr = x0_new + α * (x0_new - simplex[end])
+        fr = f(xr)
+
+        if fvals[1] <= fr < fvals[n]
+            simplex[end] = xr
+            fvals[end] = fr
+        elseif fr < fvals[1]
+            # Expansion
+            xe = x0_new + γ * (xr - x0_new)
+            fe = f(xe)
+            if fe < fr
+                simplex[end] = xe
+                fvals[end] = fe
+            else
+                simplex[end] = xr
+                fvals[end] = fr
+            end
+        else
+            # Contraction
+            xc = x0_new + ρ * (simplex[end] - x0_new)
+            fc = f(xc)
+            if fc < fvals[end]
+                simplex[end] = xc
+                fvals[end] = fc
+            else
+                # Shrink
+                for i in 2:n+1
+                    simplex[i] = simplex[1] + σ * (simplex[i] - simplex[1])
+                    fvals[i] = f(simplex[i])
+                end
+            end
+        end
+    end
+
+    simplex[argmin(fvals)]
+end
+
+# ============================================================================
 # Curve Bootstrapping
 # ============================================================================
 
@@ -304,6 +779,9 @@ SwapRate(mat, rate) = SwapRate(mat, rate, 2)  # semi-annual default
 Bootstrap a discount curve from market instruments.
 Instruments should be sorted by maturity.
 """
+# TODO: Handle inconsistent/arbitrage-free input validation
+# TODO: Add Jacobian output for risk sensitivities
+# TODO: Support simultaneous solve (vs sequential)
 function bootstrap(instruments::Vector{<:MarketInstrument}; interp::InterpolationMethod=LogLinearInterp())
     times = Float64[0.0]
     dfs = Float64[1.0]
@@ -753,6 +1231,7 @@ Floor(mat, strike) = Floor(mat, strike, 4, 1.0)
 
 European swaption - option to enter a swap.
 """
+# TODO: Export black_swaption function (currently only price() method exists)
 struct Swaption
     expiry::Float64         # Option expiry
     swap_maturity::Float64  # Underlying swap maturity

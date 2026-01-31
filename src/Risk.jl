@@ -1,5 +1,11 @@
 module Risk
 
+# TODO: Add historical simulation VaR
+# TODO: Add Monte Carlo VaR
+# TODO: Add Cornish-Fisher expansion for non-normal VaR
+# TODO: Add correlation/covariance analytics
+# TODO: Add stress testing framework
+
 using ..Core: AbstractRiskMeasure
 using ..PortfolioModule
 using Statistics
@@ -93,8 +99,10 @@ function compute(::Volatility, returns::AbstractVector)
 end
 
 # Sharpe implementation
+# TODO: Make frequency configurable (daily, weekly, monthly)
+# TODO: Add annualization option
 function compute(sharpe::Sharpe, returns::AbstractVector)
-    excess_return = mean(returns) - sharpe.rf / 252  # Assume daily returns, annualized rf
+    excess_return = mean(returns) - sharpe.rf / 252  # FIXME: Hard-coded 252 days
     vol = std(returns)
     return excess_return / vol
 end

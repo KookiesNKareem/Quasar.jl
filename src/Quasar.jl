@@ -1,5 +1,8 @@
 module Quasar
 
+# TODO: Add precompilation workloads for faster load times
+# TODO: Consider SnoopCompile for latency analysis
+
 # Core must come first - defines abstract types
 include("Core.jl")
 using .Core
@@ -23,6 +26,7 @@ export gradient, hessian, jacobian, value_and_gradient, current_backend, set_bac
 include("Instruments.jl")
 using .Instruments
 export Stock, EuropeanOption, AmericanOption, AsianOption, price, black_scholes
+export american_binomial, asian_geometric, asian_arithmetic_approx
 export GreeksResult, compute_greeks
 
 # Portfolio
@@ -71,11 +75,15 @@ export mc_price_qmc, sobol_normals, simulate_gbm_qmc
 # Market data
 include("MarketData.jl")
 using .MarketData
-export AbstractMarketData, AbstractPriceHistory, CSVAdapter, ParquetAdapter
+export AbstractMarketData, AbstractPriceHistory, AbstractDataAdapter
+export PriceHistory, returns, resample, align
+export CSVAdapter, ParquetAdapter, YAHOO_ADAPTER
+import .MarketData: load, save
 
 # Interest rates
 include("InterestRates.jl")
 using .InterestRates
+# TODO: Export black_swaption (Swaption type exists but black_swaption not exported)
 export RateCurve, DiscountCurve, ZeroCurve, ForwardCurve
 export discount, zero_rate, forward_rate, instantaneous_forward
 export LinearInterp, LogLinearInterp, CubicSplineInterp

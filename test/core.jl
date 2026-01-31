@@ -28,6 +28,89 @@ end
 
     # Immutability - should error on modification attempt
     @test_throws MethodError state.prices["AAPL"] = 160.0
+
+    # Input validation tests
+    @testset "MarketState validation" begin
+        # Negative price should throw
+        @test_throws ArgumentError MarketState(
+            prices=Dict("AAPL" => -150.0),
+            rates=Dict("USD" => 0.05),
+            volatilities=Dict("AAPL" => 0.2),
+            timestamp=0.0
+        )
+
+        # Zero price should throw
+        @test_throws ArgumentError MarketState(
+            prices=Dict("AAPL" => 0.0),
+            rates=Dict("USD" => 0.05),
+            volatilities=Dict("AAPL" => 0.2),
+            timestamp=0.0
+        )
+
+        # NaN price should throw
+        @test_throws ArgumentError MarketState(
+            prices=Dict("AAPL" => NaN),
+            rates=Dict("USD" => 0.05),
+            volatilities=Dict("AAPL" => 0.2),
+            timestamp=0.0
+        )
+
+        # Inf price should throw
+        @test_throws ArgumentError MarketState(
+            prices=Dict("AAPL" => Inf),
+            rates=Dict("USD" => 0.05),
+            volatilities=Dict("AAPL" => 0.2),
+            timestamp=0.0
+        )
+
+        # Negative volatility should throw
+        @test_throws ArgumentError MarketState(
+            prices=Dict("AAPL" => 150.0),
+            rates=Dict("USD" => 0.05),
+            volatilities=Dict("AAPL" => -0.2),
+            timestamp=0.0
+        )
+
+        # Zero volatility should throw
+        @test_throws ArgumentError MarketState(
+            prices=Dict("AAPL" => 150.0),
+            rates=Dict("USD" => 0.05),
+            volatilities=Dict("AAPL" => 0.0),
+            timestamp=0.0
+        )
+
+        # NaN rate should throw
+        @test_throws ArgumentError MarketState(
+            prices=Dict("AAPL" => 150.0),
+            rates=Dict("USD" => NaN),
+            volatilities=Dict("AAPL" => 0.2),
+            timestamp=0.0
+        )
+    end
+end
+
+@testset "ImmutableDict" begin
+    d = Quasar.Core.ImmutableDict(Dict("a" => 1, "b" => 2))
+
+    # Reading works
+    @test d["a"] == 1
+    @test d["b"] == 2
+    @test haskey(d, "a")
+    @test !haskey(d, "c")
+    @test length(d) == 2
+    @test Set(keys(d)) == Set(["a", "b"])
+    @test Set(values(d)) == Set([1, 2])
+
+    # Modification should throw
+    @test_throws MethodError d["a"] = 10
+    @test_throws MethodError d["c"] = 3
+
+    # Verify original is unchanged
+    @test d["a"] == 1
+
+    # Iteration works
+    items = [(k, v) for (k, v) in d]
+    @test length(items) == 2
 end
 
 @testset "Traits" begin

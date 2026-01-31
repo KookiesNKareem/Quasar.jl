@@ -1,6 +1,25 @@
 using Test
 using Quasar
 
+# NOTE: The following test categories have been implemented:
+# ✓ Edge case tests (T→0, S→0, K→∞, σ→0) - see instruments.jl
+# ✓ Error case tests (invalid inputs) - see core.jl, instruments.jl
+# ✓ Gradient accuracy tests (AD vs analytical vs finite diff) - see ad.jl
+# ✓ ImmutableDict immutability tests - see core.jl
+# ✓ Bond pricing consistency tests - see interest_rates.jl
+# ✓ Curve interpolation accuracy tests - see interest_rates.jl
+# ✓ Nelson-Siegel/Svensson curve fitting tests - see interest_rates.jl
+# ✓ Day count convention tests - see interest_rates.jl
+
+# Remaining TODOs for future work:
+# TODO: Enable doctests: @testset "Doctests" begin doctest(Quasar) end
+# TODO: Add integration tests (end-to-end workflows)
+# TODO: Add performance regression tests
+# TODO: Add GPU backend tests (Reactant, Enzyme) - requires GPU hardware
+# TODO: Add extension loading tests
+# TODO: Add MCResult confidence intervals correctness tests
+# TODO: Add calibration robustness tests (noisy data, edge cases)
+
 @testset "Quasar.jl" begin
     include("core.jl")
     include("ad.jl")

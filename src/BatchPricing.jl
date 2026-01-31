@@ -1,5 +1,9 @@
 module BatchPricing
 
+# TODO: Add SIMD vectorization for CPU batch operations
+# TODO: Add function caching to avoid recompilation
+# TODO: Add memory-efficient batching for very large surfaces
+
 using ..Models: SABRParams, sabr_implied_vol, black76
 using ..AD: gradient, current_backend, ADBackend, ReactantBackend, ForwardDiffBackend
 
@@ -58,6 +62,8 @@ const MASK3_3 = [0.0, 0.0, 1.0]
 Pre-compiled SABR calibrator for fast GPU optimization.
 Compiles gradient once, runs many iterations without recompilation.
 """
+# TODO: Add usage example in docstring
+# TODO: Add warm-start support (reuse previous solution)
 mutable struct PrecompiledSABRCalibrator
     F::Float64
     T::Float64

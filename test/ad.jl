@@ -78,4 +78,91 @@ using Quasar
 
         set_backend!(ForwardDiffBackend())  # reset
     end
+
+    @testset "Input validation" begin
+        f(x) = sum(x.^2)
+
+        # NaN input should throw
+        @test_throws ArgumentError gradient(f, [1.0, NaN, 3.0])
+        @test_throws ArgumentError gradient(f, [NaN])
+
+        # Inf input should throw
+        @test_throws ArgumentError gradient(f, [1.0, Inf, 3.0])
+        @test_throws ArgumentError gradient(f, [-Inf])
+
+        # Valid input should work
+        @test gradient(f, [1.0, 2.0, 3.0]) ≈ [2.0, 4.0, 6.0]
+    end
+
+    @testset "Gradient accuracy (ForwardDiff vs PureJulia)" begin
+        # Test multiple functions
+        functions = [
+            (x -> sum(x.^2), "quadratic"),
+            (x -> sum(sin.(x)), "trigonometric"),
+            (x -> sum(exp.(x)), "exponential"),
+            (x -> sum(x.^3 .- 2x.^2 .+ x), "polynomial"),
+        ]
+
+        for (f, name) in functions
+            x = [1.0, 2.0, 3.0]
+
+            set_backend!(ForwardDiffBackend())
+            g_exact = gradient(f, x)
+
+            set_backend!(PureJuliaBackend())
+            g_fd = gradient(f, x)
+
+            @test g_fd ≈ g_exact atol=1e-5
+        end
+
+        set_backend!(ForwardDiffBackend())  # reset
+    end
+
+    @testset "Hessian computation" begin
+        f(x) = sum(x.^2) + prod(x)  # Non-trivial Hessian
+        x = [1.0, 2.0]
+
+        set_backend!(ForwardDiffBackend())
+        H_fd = hessian(f, x)
+
+        # For f(x,y) = x² + y² + xy:
+        # ∂²f/∂x² = 2, ∂²f/∂y² = 2, ∂²f/∂x∂y = 1
+        @test H_fd[1,1] ≈ 2.0
+        @test H_fd[2,2] ≈ 2.0
+        @test H_fd[1,2] ≈ 1.0
+        @test H_fd[2,1] ≈ 1.0  # Symmetry
+
+        # Compare with PureJulia
+        set_backend!(PureJuliaBackend())
+        H_pure = hessian(f, x)
+        @test H_pure ≈ H_fd atol=1e-4
+
+        set_backend!(ForwardDiffBackend())  # reset
+    end
+
+    @testset "Jacobian computation" begin
+        f(x) = [x[1]^2 + x[2], x[1] * x[2], sin(x[1])]
+        x = [1.0, 2.0]
+
+        set_backend!(ForwardDiffBackend())
+        J_fd = jacobian(f, x)
+
+        # Expected Jacobian at (1, 2):
+        # [2x₁, 1] = [2, 1]
+        # [x₂, x₁] = [2, 1]
+        # [cos(x₁), 0] = [cos(1), 0]
+        @test J_fd[1, 1] ≈ 2.0
+        @test J_fd[1, 2] ≈ 1.0
+        @test J_fd[2, 1] ≈ 2.0
+        @test J_fd[2, 2] ≈ 1.0
+        @test J_fd[3, 1] ≈ cos(1.0)
+        @test J_fd[3, 2] ≈ 0.0
+
+        # Compare with PureJulia
+        set_backend!(PureJuliaBackend())
+        J_pure = jacobian(f, x)
+        @test J_pure ≈ J_fd atol=1e-5
+
+        set_backend!(ForwardDiffBackend())  # reset
+    end
 end

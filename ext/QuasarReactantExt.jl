@@ -29,6 +29,8 @@ using Enzyme
 # TODO: Add function caching to avoid recompilation
 # ============================================================================
 
+# TODO: Add function caching to avoid recompilation on repeated calls
+# TODO: Add error handling for compilation failures with useful messages
 function Quasar.AD._gradient(::ReactantBackend, f, x)
     x_react = x isa Reactant.ConcreteRArray ? x : Reactant.ConcreteRArray(x)
 

@@ -93,11 +93,29 @@ end
 # ============================================================================
 
 """
+    validate_ad_input(x)
+
+Check that input is valid for automatic differentiation.
+Throws ArgumentError if NaN or Inf values are detected.
+"""
+function validate_ad_input(x)
+    if any(isnan, x)
+        throw(ArgumentError("Input contains NaN values - cannot compute gradient"))
+    end
+    if any(isinf, x)
+        throw(ArgumentError("Input contains Inf values - cannot compute gradient"))
+    end
+    nothing
+end
+
+"""
     gradient(f, x; backend=current_backend())
 
 Compute the gradient of `f` at `x` using the specified backend.
+Validates input for NaN/Inf values before computing.
 """
 function gradient(f, x; backend=current_backend())
+    validate_ad_input(x)
     _gradient(backend, f, x)
 end
 
@@ -106,15 +124,18 @@ function _gradient(::ForwardDiffBackend, f, x)
     ForwardDiff.gradient(f, x)
 end
 
-# PureJulia implementation (finite differences)
+# PureJulia implementation (finite differences with central differences for better accuracy)
 function _gradient(::PureJuliaBackend, f, x; eps=1e-7)
+    @warn "Using PureJuliaBackend for gradient computation. This is slow and less accurate than ForwardDiff. Consider using ForwardDiffBackend." maxlog=1
     n = length(x)
     g = similar(x)
-    f0 = f(x)
     for i in 1:n
         x_plus = copy(x)
+        x_minus = copy(x)
         x_plus[i] += eps
-        g[i] = (f(x_plus) - f0) / eps
+        x_minus[i] -= eps
+        # Central differences: (f(x+h) - f(x-h)) / 2h
+        g[i] = (f(x_plus) - f(x_minus)) / (2 * eps)
     end
     return g
 end

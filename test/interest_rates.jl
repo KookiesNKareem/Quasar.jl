@@ -7,6 +7,180 @@ const ir_price = Quasar.InterestRates.price
 
 @testset "Interest Rates" begin
 
+    @testset "Day Count Conventions" begin
+        @testset "Year fraction with numeric times" begin
+            # For numeric inputs, all conventions return t2 - t1
+            @test year_fraction(0.0, 1.0, ACT360()) ≈ 1.0
+            @test year_fraction(0.0, 1.0, ACT365()) ≈ 1.0
+            @test year_fraction(0.0, 1.0, Thirty360()) ≈ 1.0
+            @test year_fraction(0.0, 1.0, ACTACT()) ≈ 1.0
+
+            @test year_fraction(0.5, 1.5, ACT360()) ≈ 1.0
+            @test year_fraction(1.0, 3.0, ACT365()) ≈ 2.0
+        end
+
+        @testset "Convention types exist" begin
+            @test ACT360() isa DayCountConvention
+            @test ACT365() isa DayCountConvention
+            @test Thirty360() isa DayCountConvention
+            @test ACTACT() isa DayCountConvention
+        end
+    end
+
+    @testset "Nelson-Siegel Curve" begin
+        @testset "Basic Nelson-Siegel" begin
+            # Create a curve with known parameters
+            curve = NelsonSiegelCurve(0.05, -0.02, 0.01, 2.0)
+
+            # Instantaneous rate = β0 + β1 = 0.03
+            @test zero_rate(curve, 0.0) ≈ 0.03
+
+            # Long-term rate = β0 = 0.05
+            @test zero_rate(curve, 100.0) ≈ 0.05 atol=0.001
+
+            # Discount factors
+            @test discount(curve, 0.0) ≈ 1.0
+            @test discount(curve, 1.0) < 1.0
+            @test discount(curve, 5.0) < discount(curve, 1.0)
+
+            # Forward rates should be well-behaved
+            f = instantaneous_forward(curve, 2.0)
+            @test isfinite(f)
+            @test f > 0
+        end
+
+        @testset "Nelson-Siegel validation" begin
+            # τ must be positive
+            @test_throws ArgumentError NelsonSiegelCurve(0.05, -0.02, 0.01, 0.0)
+            @test_throws ArgumentError NelsonSiegelCurve(0.05, -0.02, 0.01, -1.0)
+        end
+
+        @testset "Nelson-Siegel fitting" begin
+            # Generate synthetic data from a known curve
+            true_curve = NelsonSiegelCurve(0.04, -0.02, 0.015, 2.5)
+            maturities = [0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 20.0, 30.0]
+            rates = [zero_rate(true_curve, t) for t in maturities]
+
+            # Fit a curve to this data
+            fitted = fit_nelson_siegel(maturities, rates)
+
+            # Should recover similar rates
+            for (t, r) in zip(maturities, rates)
+                @test zero_rate(fitted, t) ≈ r atol=0.001
+            end
+        end
+    end
+
+    @testset "Svensson Curve" begin
+        @testset "Basic Svensson" begin
+            curve = SvenssonCurve(0.05, -0.02, 0.01, 0.005, 2.0, 5.0)
+
+            # Instantaneous rate = β0 + β1
+            @test zero_rate(curve, 0.0) ≈ 0.03
+
+            # Long-term rate = β0
+            @test zero_rate(curve, 100.0) ≈ 0.05 atol=0.001
+
+            # Should be able to compute discount factors
+            @test discount(curve, 1.0) < 1.0
+            @test discount(curve, 5.0) < discount(curve, 1.0)
+        end
+
+        @testset "Svensson validation" begin
+            @test_throws ArgumentError SvenssonCurve(0.05, -0.02, 0.01, 0.005, 0.0, 5.0)
+            @test_throws ArgumentError SvenssonCurve(0.05, -0.02, 0.01, 0.005, 2.0, 0.0)
+        end
+    end
+
+    @testset "Curve Interpolation Accuracy" begin
+        # Test that different interpolation methods give reasonable results
+        times = [0.0, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0]
+        rates = [0.02, 0.022, 0.024, 0.028, 0.032, 0.038, 0.042, 0.045]
+
+        zc_linear = ZeroCurve(times, rates; interp=LinearInterp())
+        zc_loglin = ZeroCurve(times, rates; interp=LogLinearInterp())
+
+        # At knot points, all methods should agree
+        for (t, r) in zip(times, rates)
+            @test zero_rate(zc_linear, t) ≈ r atol=1e-10
+            @test zero_rate(zc_loglin, t) ≈ r atol=1e-10
+        end
+
+        # Between knots, should be reasonable
+        test_times = [0.1, 0.75, 1.5, 3.0, 7.0, 20.0]
+        for t in test_times
+            r_lin = zero_rate(zc_linear, t)
+            r_log = zero_rate(zc_loglin, t)
+
+            # Rates should be in the range of surrounding knots
+            i = searchsortedlast(times, t)
+            if i >= 1 && i < length(times)
+                r_lo, r_hi = rates[i], rates[i+1]
+                @test min(r_lo, r_hi) <= r_lin <= max(r_lo, r_hi)
+            end
+
+            # Different methods should give similar results
+            @test r_lin ≈ r_log atol=0.005
+        end
+    end
+
+    @testset "Bond pricing consistency" begin
+        @testset "ZCB pricing methods agree" begin
+            zcb = ZeroCouponBond(5.0, 100.0)
+
+            # Different ways to price should agree
+            rate = 0.05
+            zc = ZeroCurve(rate)
+            dc = DiscountCurve(rate)
+
+            @test ir_price(zcb, zc) ≈ ir_price(zcb, dc) atol=1e-8
+            @test ir_price(zcb, rate) ≈ ir_price(zcb, zc) atol=1e-8
+        end
+
+        @testset "Coupon bond pricing consistency" begin
+            bond = FixedRateBond(5.0, 0.04, 2, 100.0)
+
+            # Price at different yields
+            yields = [0.02, 0.03, 0.04, 0.05, 0.06]
+            prices = [ir_price(bond, y) for y in yields]
+
+            # Higher yield = lower price
+            for i in 1:length(yields)-1
+                @test prices[i] > prices[i+1]
+            end
+
+            # YTM should recover the yield
+            for y in yields
+                p = ir_price(bond, y)
+                ytm_recovered = yield_to_maturity(bond, p)
+                @test ytm_recovered ≈ y atol=1e-8
+            end
+        end
+
+        @testset "Duration and convexity bounds" begin
+            bond = FixedRateBond(10.0, 0.05, 2, 100.0)
+            y = 0.05
+
+            dur = duration(bond, y)
+            mod_dur = modified_duration(bond, y)
+            conv = convexity(bond, y)
+
+            # Duration < maturity for coupon bonds
+            @test 0 < dur < 10.0
+
+            # Modified duration < duration
+            @test mod_dur < dur
+
+            # Convexity > duration^2 / something (loosely)
+            @test conv > 0
+
+            # DV01 should be positive and reasonable
+            dv = dv01(bond, y)
+            @test dv > 0
+            @test dv < 1.0  # Should be small for 100 face value
+        end
+    end
+
     @testset "Yield Curves" begin
         @testset "Flat curve" begin
             rate = 0.05

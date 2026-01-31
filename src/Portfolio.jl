@@ -19,10 +19,14 @@ A collection of instruments with positions.
 - `instruments::Vector{I}` - The instruments in the portfolio
 - `weights::Vector{Float64}` - Position sizes (can be shares, contracts, notional)
 """
+# TODO: Add thread-safe operations for concurrent access
+# TODO: Add lazy evaluation for large portfolios
+# TODO: Add caching for computed values (Greeks, etc.)
 struct Portfolio{I<:AbstractInstrument} <: AbstractPortfolio
     instruments::Vector{I}
     weights::Vector{Float64}
 
+    # TODO: Validate weights (no NaN/Inf, optionally normalize)
     function Portfolio{I}(instruments::Vector{I}, weights::Vector{Float64}) where I<:AbstractInstrument
         length(instruments) == length(weights) ||
             error("instruments and weights must have same length")
@@ -57,6 +61,8 @@ differentiable(::Type{<:Portfolio}) = IsDifferentiable()
 
 Compute total portfolio value.
 """
+# TODO: Add parallel computation for large portfolios
+# TODO: Return breakdown by instrument for attribution
 function value(portfolio::Portfolio, state::MarketState)
     total = 0.0
     for (inst, weight) in zip(portfolio.instruments, portfolio.weights)
