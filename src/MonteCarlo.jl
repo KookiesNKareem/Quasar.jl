@@ -2,8 +2,9 @@ module MonteCarlo
 
 using Random
 using Statistics: mean, std
+using Sobol: SobolSeq, next!
 using ..Core: ADBackend
-using ..AD: gradient, current_backend, ForwardDiffBackend
+using ..AD: gradient, current_backend, ForwardDiffBackend, EnzymeBackend
 
 # ============================================================================
 # Path Dynamics
@@ -158,6 +159,107 @@ function simulate_heston(S0, T, nsteps, dynamics::HestonDynamics; rng=Random.def
 end
 
 # ============================================================================
+# Quasi-Monte Carlo (Sobol Sequences)
+# ============================================================================
+
+"""
+    box_muller(u1, u2)
+
+Transform two uniform [0,1] samples to standard normal using Box-Muller.
+Returns two independent N(0,1) samples.
+"""
+function box_muller(u1, u2)
+    # Clamp to avoid log(0)
+    u1_safe = clamp(u1, 1e-10, 1.0 - 1e-10)
+    r = sqrt(-2 * log(u1_safe))
+    theta = 2π * u2
+    return r * cos(theta), r * sin(theta)
+end
+
+"""
+    sobol_normals(dim::Int, n::Int)
+
+Generate n samples of dim-dimensional standard normal vectors using Sobol sequences.
+Returns a Matrix{Float64} of size (n, dim).
+
+This is deterministic - same inputs always give same outputs.
+"""
+function sobol_normals(dim::Int, n::Int)
+    # Need 2*dim uniform samples for Box-Muller (pairs)
+    uniform_dim = 2 * ((dim + 1) ÷ 2)  # Round up to even
+    seq = SobolSeq(uniform_dim)
+
+    result = Matrix{Float64}(undef, n, dim)
+    uniform = Vector{Float64}(undef, uniform_dim)
+
+    for i in 1:n
+        next!(seq, uniform)
+        for j in 1:2:dim
+            z1, z2 = box_muller(uniform[j], uniform[j+1])
+            result[i, j] = z1
+            if j + 1 <= dim
+                result[i, j+1] = z2
+            end
+        end
+    end
+
+    return result
+end
+
+"""
+    simulate_gbm_qmc(S0, T, nsteps, dynamics, Z::AbstractVector)
+
+Generate a single GBM path using pre-computed normal samples Z.
+Z should have length nsteps.
+"""
+function simulate_gbm_qmc(S0, T, nsteps, dynamics::GBMDynamics, Z::AbstractVector)
+    dt = T / nsteps
+    path = Vector{typeof(S0 * one(dynamics.r) * one(eltype(Z)))}(undef, nsteps + 1)
+    path[1] = S0
+
+    sqrt_dt = sqrt(dt)
+    drift = (dynamics.r - 0.5 * dynamics.sigma^2) * dt
+
+    for i in 1:nsteps
+        path[i+1] = path[i] * exp(drift + dynamics.sigma * sqrt_dt * Z[i])
+    end
+
+    return path
+end
+
+"""
+    mc_price_qmc(S0, T, payoff, dynamics; npaths=10000, nsteps=252)
+
+Price a derivative using Quasi-Monte Carlo (Sobol sequences).
+
+This is deterministic and differentiable with Enzyme.
+Better convergence than pseudo-random MC: O(1/N) vs O(1/√N).
+"""
+function mc_price_qmc(S0, T, pf::AbstractPayoff, dynamics::GBMDynamics;
+                      npaths::Int=10000, nsteps::Int=252)
+
+    r = dynamics.r
+    df = exp(-r * T)
+
+    # Generate all Sobol normals upfront (deterministic)
+    Z = sobol_normals(nsteps, npaths)
+
+    # Compute payoffs
+    RT = typeof(S0 * one(r))
+    payoffs = Vector{RT}(undef, npaths)
+
+    for i in 1:npaths
+        path = simulate_gbm_qmc(S0, T, nsteps, dynamics, @view Z[i, :])
+        payoffs[i] = payoff(pf, path)
+    end
+
+    price_est = df * mean(payoffs)
+    stderr = df * std(payoffs) / sqrt(npaths)
+
+    return MCResult(price_est, stderr, npaths, price_est - 1.96*stderr, price_est + 1.96*stderr)
+end
+
+# ============================================================================
 # Monte Carlo Pricing
 # ============================================================================
 
@@ -251,41 +353,68 @@ end
     mc_delta(S0, T, payoff, dynamics; npaths=10000, nsteps=252, backend=current_backend())
 
 Compute delta using pathwise differentiation with AD.
+
+Automatically uses QMC (Sobol sequences) when backend is EnzymeBackend,
+since Enzyme cannot differentiate through pseudo-random number generators.
 """
 function mc_delta(S0, T, payoff::AbstractPayoff, dynamics::GBMDynamics;
                   npaths::Int=10000, nsteps::Int=252, backend=current_backend())
 
-    function price_fn(s0)
-        # Use fixed seed for consistent paths across perturbations
-        rng = Random.MersenneTwister(42)
-        result = mc_price(s0, T, payoff, dynamics; npaths=npaths, nsteps=nsteps,
-                         antithetic=false, rng=rng)
-        return result.price
+    if backend isa EnzymeBackend
+        # Use QMC for Enzyme (deterministic, no RNG)
+        function price_fn_qmc(s0)
+            result = mc_price_qmc(s0, T, payoff, dynamics; npaths=npaths, nsteps=nsteps)
+            return result.price
+        end
+        g = gradient(x -> price_fn_qmc(x[1]), [S0]; backend=backend)
+        return g[1]
+    else
+        # Use pseudo-random with fixed seed for ForwardDiff/PureJulia
+        function price_fn(s0)
+            rng = Random.MersenneTwister(42)
+            result = mc_price(s0, T, payoff, dynamics; npaths=npaths, nsteps=nsteps,
+                             antithetic=false, rng=rng)
+            return result.price
+        end
+        g = gradient(x -> price_fn(x[1]), [S0]; backend=backend)
+        return g[1]
     end
-
-    g = gradient(x -> price_fn(x[1]), [S0]; backend=backend)
-    return g[1]
 end
 
 """
     mc_greeks(S0, T, payoff, dynamics; npaths=10000, nsteps=252, backend=current_backend())
 
 Compute delta and vega using pathwise differentiation.
+
+Automatically uses QMC (Sobol sequences) when backend is EnzymeBackend,
+since Enzyme cannot differentiate through pseudo-random number generators.
 """
 function mc_greeks(S0, T, payoff::AbstractPayoff, dynamics::GBMDynamics;
                    npaths::Int=10000, nsteps::Int=252, backend=current_backend())
 
-    function price_fn(params)
-        s0, sigma = params
-        dyn = GBMDynamics(dynamics.r, sigma)
-        rng = Random.MersenneTwister(42)
-        result = mc_price(s0, T, payoff, dyn; npaths=npaths, nsteps=nsteps,
-                         antithetic=false, rng=rng)
-        return result.price
+    if backend isa EnzymeBackend
+        # Use QMC for Enzyme (deterministic, no RNG)
+        function price_fn_qmc(params)
+            s0, sigma = params
+            dyn = GBMDynamics(dynamics.r, sigma)
+            result = mc_price_qmc(s0, T, payoff, dyn; npaths=npaths, nsteps=nsteps)
+            return result.price
+        end
+        g = gradient(price_fn_qmc, [S0, dynamics.sigma]; backend=backend)
+        return (delta=g[1], vega=g[2])
+    else
+        # Use pseudo-random with fixed seed for ForwardDiff/PureJulia
+        function price_fn(params)
+            s0, sigma = params
+            dyn = GBMDynamics(dynamics.r, sigma)
+            rng = Random.MersenneTwister(42)
+            result = mc_price(s0, T, payoff, dyn; npaths=npaths, nsteps=nsteps,
+                             antithetic=false, rng=rng)
+            return result.price
+        end
+        g = gradient(price_fn, [S0, dynamics.sigma]; backend=backend)
+        return (delta=g[1], vega=g[2])
     end
-
-    g = gradient(price_fn, [S0, dynamics.sigma]; backend=backend)
-    return (delta=g[1], vega=g[2])
 end
 
 # ============================================================================
@@ -427,5 +556,7 @@ export UpAndOutCall, DownAndOutPut, AmericanPut, AmericanCall
 export payoff, simulate_gbm, simulate_heston, simulate_gbm_antithetic
 export MCResult, mc_price, mc_delta, mc_greeks
 export lsm_price, intrinsic
+# QMC exports
+export sobol_normals, simulate_gbm_qmc, mc_price_qmc
 
 end

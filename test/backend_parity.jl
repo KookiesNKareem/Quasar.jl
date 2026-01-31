@@ -1,5 +1,6 @@
 using Test
 using Enzyme
+using Reactant
 using Quasar
 
 @testset "Backend Parity" begin
@@ -50,5 +51,31 @@ using Quasar
 
         enz_jac = Quasar.jacobian(g, x; backend=EnzymeBackend())
         @test enz_jac ≈ fd_jac atol=1e-10
+    end
+
+    @testset "Reactant matches ForwardDiff" begin
+        # Use simpler function - Reactant doesn't support prod() reduction in reverse mode
+        f_simple(x) = sum(x.^2) + sum(x)
+
+        fd_grad_simple = Quasar.gradient(f_simple, x; backend=ForwardDiffBackend())
+        react_grad = Quasar.gradient(f_simple, x; backend=ReactantBackend())
+        @test react_grad ≈ fd_grad_simple atol=1e-10
+
+        fd_val_simple, fd_grad2_simple = Quasar.value_and_gradient(f_simple, x; backend=ForwardDiffBackend())
+        react_val, react_grad2 = Quasar.value_and_gradient(f_simple, x; backend=ReactantBackend())
+        @test react_val ≈ fd_val_simple
+        @test react_grad2 ≈ fd_grad2_simple atol=1e-10
+
+        # Hessian (uses Enzyme directly, so prod is fine)
+        h(x) = sum(x.^2) + x[1]*x[2]*x[3]
+        fd_hess = Quasar.hessian(h, x; backend=ForwardDiffBackend())
+        react_hess = Quasar.hessian(h, x; backend=ReactantBackend())
+        @test react_hess ≈ fd_hess atol=1e-10
+
+        # Jacobian (uses Enzyme directly)
+        g(x) = [x[1]^2 + x[2], x[2]*x[3], x[1] + x[2] + x[3]]
+        fd_jac = Quasar.jacobian(g, x; backend=ForwardDiffBackend())
+        react_jac = Quasar.jacobian(g, x; backend=ReactantBackend())
+        @test react_jac ≈ fd_jac atol=1e-10
     end
 end

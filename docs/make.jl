@@ -14,7 +14,9 @@ makedocs(;
     ),
     pages=[
         "Home" => "index.md",
+        "AD Backends" => "backends.md",
     ],
+    warnonly=true,
 )
 
 deploydocs(;

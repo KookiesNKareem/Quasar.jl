@@ -59,6 +59,7 @@ export GBMDynamics, HestonDynamics
 export EuropeanCall, EuropeanPut, AsianCall, AsianPut, UpAndOutCall, DownAndOutPut
 export AmericanPut, AmericanCall
 export MCResult, mc_price, mc_delta, mc_greeks, lsm_price
+export mc_price_qmc, sobol_normals, simulate_gbm_qmc
 
 # Market data
 include("MarketData.jl")

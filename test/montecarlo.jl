@@ -1,4 +1,6 @@
 using Random
+using Enzyme
+using Statistics: mean, std
 
 @testset "Monte Carlo" begin
 
@@ -138,9 +140,49 @@ using Random
             mc_delta(S0, T, payoff, dynamics; npaths=1000, nsteps=50)
         end
         @test result ≈ delta_pj atol=1e-10
+    end
 
-        # Note: Enzyme cannot differentiate through RNG (MersenneTwister)
-        # Monte Carlo Greeks require ForwardDiff or PureJulia backends
+    @testset "Quasi-Monte Carlo" begin
+        S0, K, T, r, sigma = 100.0, 100.0, 1.0, 0.05, 0.2
+        dynamics = GBMDynamics(r, sigma)
+
+        # QMC pricing is deterministic
+        result1 = mc_price_qmc(S0, T, EuropeanCall(K), dynamics; npaths=5000, nsteps=50)
+        result2 = mc_price_qmc(S0, T, EuropeanCall(K), dynamics; npaths=5000, nsteps=50)
+        @test result1.price == result2.price  # Exactly equal (deterministic)
+
+        # QMC price should be close to Black-Scholes
+        bs_price = black_scholes(S0, K, T, r, sigma, :call)
+        @test abs(result1.price - bs_price) < 3 * result1.stderr
+
+        # Sobol normals are deterministic
+        Z1 = Quasar.MonteCarlo.sobol_normals(10, 100)
+        Z2 = Quasar.MonteCarlo.sobol_normals(10, 100)
+        @test Z1 == Z2
+
+        # Sobol normals have approximately correct statistics
+        Z = Quasar.MonteCarlo.sobol_normals(1, 10000)
+        @test abs(mean(Z)) < 0.05  # Near zero mean
+        @test abs(std(Z) - 1.0) < 0.1  # Near unit variance
+    end
+
+    @testset "Enzyme MC Greeks with QMC" begin
+        S0, K, T, r, sigma = 100.0, 100.0, 1.0, 0.05, 0.2
+        dynamics = GBMDynamics(r, sigma)
+        payoff = EuropeanCall(K)
+
+        # Enzyme now works with MC Greeks via QMC
+        delta_enz = mc_delta(S0, T, payoff, dynamics; npaths=1000, nsteps=50, backend=EnzymeBackend())
+        @test 0 < delta_enz < 1  # Valid delta range for call
+
+        greeks_enz = mc_greeks(S0, T, payoff, dynamics; npaths=1000, nsteps=50, backend=EnzymeBackend())
+        @test 0 < greeks_enz.delta < 1
+        @test greeks_enz.vega > 0  # Vega always positive
+
+        # Compare to ForwardDiff (uses different RNG so won't match exactly,
+        # but should be in same ballpark)
+        delta_fd = mc_delta(S0, T, payoff, dynamics; npaths=1000, nsteps=50, backend=ForwardDiffBackend())
+        @test abs(delta_enz - delta_fd) < 0.1  # Within 0.1 of each other
     end
 
     @testset "Longstaff-Schwartz American Options" begin
