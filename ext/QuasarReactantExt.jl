@@ -136,10 +136,89 @@ function _reactant_call_compiled_grad(cal::Quasar.BatchPricing.PrecompiledSABRCa
     Array(cal.compiled_grad(Reactant.ConcreteRArray(x)))
 end
 
+# ============================================================================
+# General Calibrator (compile once, run on any data of same shape)
+# Uses one-hot masks to avoid scalar indexing on traced arrays
+# ============================================================================
+
+function _reactant_compile_general!(cal::Quasar.BatchPricing.GeneralSABRCalibrator)
+    F, T, β, n = cal.F, cal.T, cal.β, cal.n
+    MASK3_1 = Quasar.BatchPricing.MASK3_1
+    MASK3_2 = Quasar.BatchPricing.MASK3_2
+    MASK3_3 = Quasar.BatchPricing.MASK3_3
+
+    # Pre-compute one-hot masks for each strike index
+    strike_masks = [Float64[i == j ? 1.0 : 0.0 for j in 1:n] for i in 1:n]
+
+    # Vectorized SABR vol that works on traced values
+    function sabr_vol_traced(F, K, T, α, β, ρ, ν)
+        logFK = log(F / K + 1e-12)
+        FK_mid = (F * K)^((1 - β) / 2)
+        z = (ν / α) * FK_mid * logFK
+        z_sq = z^2
+        sqrt_term = sqrt(1 - 2*ρ*z + z_sq + 1e-12)
+        log_arg = max((sqrt_term + z - ρ) / (1 - ρ + 1e-12), 1e-12)
+        x_z_full = z / (log(log_arg) + 1e-12)
+        w = z_sq / (z_sq + 1e-6)
+        x_z = (1 - w) * (1 + ρ * z / 2) + w * x_z_full
+        denom = 1 + (1-β)^2/24 * logFK^2 + (1-β)^4/1920 * logFK^4
+        A = α / (FK_mid * denom + 1e-12)
+        C1 = ((1-β)^2 / 24) * (α^2 / (FK_mid^2 + 1e-12))
+        C2 = (ρ * β * ν * α) / (4 * FK_mid + 1e-12)
+        C3 = (2 - 3*ρ^2) * ν^2 / 24
+        A * x_z * (1 + (C1 + C2 + C3) * T)
+    end
+
+    # Loss using mask-based extraction (no scalar indexing)
+    function loss(params, K_vec, mv_vec)
+        α = abs(sum(params .* MASK3_1))
+        ρ = tanh(sum(params .* MASK3_2))
+        ν = exp(sum(params .* MASK3_3))
+        err = zero(eltype(params))
+        for i in 1:n
+            K_i = sum(K_vec .* strike_masks[i])
+            mv_i = sum(mv_vec .* strike_masks[i])
+            model_vol = sabr_vol_traced(F, K_i, T, α, β, ρ, ν)
+            err += (model_vol - mv_i)^2
+        end
+        err / n
+    end
+
+    # Gradient with respect to params only
+    function grad_fn(params, K_vec, mv_vec)
+        dp = zero(params)
+        Enzyme.autodiff(Enzyme.Reverse,
+            (p, k, m) -> loss(p, k, m),
+            Enzyme.Active,
+            Enzyme.Duplicated(params, dp),
+            Enzyme.Const(K_vec),
+            Enzyme.Const(mv_vec))
+        dp
+    end
+
+    # Compile with dummy inputs of correct shape
+    x_react = Reactant.ConcreteRArray([0.2, 0.0, log(0.3)])
+    K_react = Reactant.ConcreteRArray(collect(range(80.0, 120.0, length=n)))
+    mv_react = Reactant.ConcreteRArray(fill(0.2, n))
+
+    cal.compiled_grad = Reactant.@compile grad_fn(x_react, K_react, mv_react)
+    cal
+end
+
+function _reactant_call_general_grad(cal::Quasar.BatchPricing.GeneralSABRCalibrator,
+                                     x, strikes, market_vols)
+    x_r = Reactant.ConcreteRArray(x)
+    K_r = Reactant.ConcreteRArray(strikes)
+    mv_r = Reactant.ConcreteRArray(market_vols)
+    Array(cal.compiled_grad(x_r, K_r, mv_r))
+end
+
 # Register callbacks
 function __init__()
     Quasar.BatchPricing._REACTANT_COMPILE_GPU[] = _reactant_compile_gpu!
     Quasar.BatchPricing._REACTANT_CALL_GRAD[] = _reactant_call_compiled_grad
+    Quasar.BatchPricing._REACTANT_COMPILE_GENERAL[] = _reactant_compile_general!
+    Quasar.BatchPricing._REACTANT_CALL_GENERAL_GRAD[] = _reactant_call_general_grad
 end
 
 end # module

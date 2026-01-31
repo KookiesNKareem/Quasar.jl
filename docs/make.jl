@@ -1,5 +1,6 @@
 using Quasar
 using Documenter
+using DocumenterVitepress
 
 DocMeta.setdocmeta!(Quasar, :DocTestSetup, :(using Quasar); recursive=true)
 
@@ -7,11 +8,11 @@ makedocs(;
     modules=[Quasar],
     authors="Kareem Fareed",
     sitename="Quasar.jl",
-    format=Documenter.HTML(;
-        canonical="https://KookiesNKareem.github.io/Quasar.jl",
-        edit_link="main",
-        assets=String[],
-        prettyurls=get(ENV, "CI", "false") == "true",
+    format=DocumenterVitepress.MarkdownVitepress(
+        repo="https://github.com/KookiesNKareem/Quasar.jl",
+        devbranch="main",
+        devurl="dev",
+        build_vitepress=false,  # Don't use JLL Node.js - we'll build manually
     ),
     pages=[
         "Home" => "index.md",
@@ -29,8 +30,4 @@ makedocs(;
     warnonly=true,
 )
 
-deploydocs(;
-    repo="github.com/KookiesNKareem/Quasar.jl",
-    devbranch="main",
-    push_preview=true,
-)
+# Note: deploydocs is not used - we deploy via CI workflow with peaceiris/actions-gh-pages

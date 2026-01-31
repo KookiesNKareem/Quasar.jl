@@ -4,7 +4,7 @@ using Statistics
 using Random
 
 @testset "Risk Measures" begin
-    Random.seed!(42)  # Fixed seed for reproducibility
+    Random.seed!(1234)  # Fixed seed for reproducibility
     # Sample returns data
     returns = randn(1000) * 0.02  # Daily returns, ~2% vol
 

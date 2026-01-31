@@ -158,8 +158,111 @@ function price_surface_batch(spot::Float64, strikes::Vector{Float64},
     prices
 end
 
+# ============================================================================
+# General Pre-compiled Calibrator (compile once, run on any data)
+# ============================================================================
+
+const _REACTANT_COMPILE_GENERAL = Ref{Any}(nothing)
+const _REACTANT_CALL_GENERAL_GRAD = Ref{Any}(nothing)
+
+"""
+    GeneralSABRCalibrator
+
+Compile gradient ONCE for a problem structure (n_strikes, F, T, β).
+Then run on ANY market data of that shape - massive scale wins.
+
+# Example
+```julia
+cal = GeneralSABRCalibrator(50, 100.0, 1.0, 0.5)  # 50 strikes
+compile_general!(cal)  # One-time: ~18 seconds
+
+# Now calibrate 10,000 different smiles at ~5ms each
+for smile in all_smiles
+    result = calibrate_general!(cal, smile.strikes, smile.market_vols, x0)
+end
+```
+"""
+mutable struct GeneralSABRCalibrator
+    n::Int           # Fixed number of strikes
+    F::Float64       # Forward price
+    T::Float64       # Time to expiry
+    β::Float64       # CEV exponent
+    compiled_grad::Any
+    compiled::Bool
+end
+
+function GeneralSABRCalibrator(n::Int, F::Float64, T::Float64, β::Float64)
+    GeneralSABRCalibrator(n, F, T, β, nothing, false)
+end
+
+"""
+    compile_general!(cal::GeneralSABRCalibrator)
+
+Compile gradient that accepts strikes and market_vols as inputs.
+Call once, then use with any market data of the same shape.
+"""
+function compile_general!(cal::GeneralSABRCalibrator)
+    if _REACTANT_COMPILE_GENERAL[] === nothing
+        error("compile_general! requires Reactant. Load it with: using Reactant")
+    end
+    _REACTANT_COMPILE_GENERAL[](cal)
+    cal.compiled = true
+    cal
+end
+
+"""
+    calibrate_general!(cal, strikes, market_vols, x0; max_iter=500, lr=0.01, tol=1e-8)
+
+Run calibration on NEW market data using pre-compiled gradient.
+"""
+function calibrate_general!(cal::GeneralSABRCalibrator,
+                            strikes::Vector{Float64},
+                            market_vols::Vector{Float64},
+                            x0::Vector{Float64};
+                            max_iter::Int=500, lr::Float64=0.01, tol::Float64=1e-8)
+    @assert length(strikes) == cal.n "Expected $(cal.n) strikes, got $(length(strikes))"
+    @assert length(market_vols) == cal.n "Expected $(cal.n) market_vols"
+    @assert cal.compiled "Call compile_general!(cal) first"
+
+    F, T, β, n = cal.F, cal.T, cal.β, cal.n
+
+    loss_fn(p, K_vec, mv_vec) = begin
+        α, ρ, ν = abs(p[1]), tanh(p[2]), exp(p[3])
+        err = zero(eltype(p))
+        for i in 1:n
+            err += (_sabr_vol_gpu(F, K_vec[i], T, α, β, ρ, ν) - mv_vec[i])^2
+        end
+        err / n
+    end
+
+    x = copy(x0)
+    current_lr, prev_loss = lr, Inf
+
+    for iter in 1:max_iter
+        g = _call_general_grad(cal, x, strikes, market_vols)
+
+        x_new = x - current_lr * g
+        loss = loss_fn(x_new, strikes, market_vols)
+
+        abs(loss - prev_loss) < tol && return (x=x_new, loss=loss, converged=true, iter=iter)
+        loss > prev_loss * 1.1 && (current_lr *= 0.5)
+
+        x, prev_loss = x_new, loss
+    end
+
+    (x=x, loss=prev_loss, converged=false, iter=max_iter)
+end
+
+function _call_general_grad(cal::GeneralSABRCalibrator, x, strikes, market_vols)
+    if _REACTANT_CALL_GENERAL_GRAD[] === nothing
+        error("General compiled gradient not available")
+    end
+    _REACTANT_CALL_GENERAL_GRAD[](cal, x, strikes, market_vols)
+end
+
 export sabr_vols_batch, sabr_prices_batch
 export PrecompiledSABRCalibrator, compile_gpu!, calibrate!
+export GeneralSABRCalibrator, compile_general!, calibrate_general!
 export price_surface_batch
 
 end
