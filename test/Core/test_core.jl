@@ -29,3 +29,20 @@ end
     # Immutability - should error on modification attempt
     @test_throws MethodError state.prices["AAPL"] = 160.0
 end
+
+@testset "Traits" begin
+    # Test trait types exist
+    @test Priceable isa Type
+    @test Differentiable isa Type
+    @test HasGreeks isa Type
+    @test Simulatable isa Type
+
+    # Test trait query functions
+    struct MockInstrument <: AbstractInstrument end
+
+    # Default should be false/not-trait
+    @test !ispriceable(MockInstrument())
+    @test !isdifferentiable(MockInstrument())
+    @test !hasgreeks(MockInstrument())
+    @test !issimulatable(MockInstrument())
+end

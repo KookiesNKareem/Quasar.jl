@@ -61,6 +61,44 @@ Abstract type for automatic differentiation backends.
 abstract type AbstractADBackend end
 
 # ============================================================================
+# Traits (Holy Traits Pattern)
+# ============================================================================
+
+# Trait types
+abstract type Priceable end
+struct IsPriceable <: Priceable end
+struct NotPriceable <: Priceable end
+
+abstract type Differentiable end
+struct IsDifferentiable <: Differentiable end
+struct NotDifferentiable <: Differentiable end
+
+abstract type HasGreeks end
+struct HasGreeksTrait <: HasGreeks end
+struct NoGreeksTrait <: HasGreeks end
+
+abstract type Simulatable end
+struct IsSimulatable <: Simulatable end
+struct NotSimulatable <: Simulatable end
+
+# Trait query functions - default to negative
+priceable(::Type{<:Any}) = NotPriceable()
+priceable(x) = priceable(typeof(x))
+ispriceable(x) = priceable(x) isa IsPriceable
+
+differentiable(::Type{<:Any}) = NotDifferentiable()
+differentiable(x) = differentiable(typeof(x))
+isdifferentiable(x) = differentiable(x) isa IsDifferentiable
+
+greeks_trait(::Type{<:Any}) = NoGreeksTrait()
+greeks_trait(x) = greeks_trait(typeof(x))
+hasgreeks(x) = greeks_trait(x) isa HasGreeksTrait
+
+simulatable(::Type{<:Any}) = NotSimulatable()
+simulatable(x) = simulatable(typeof(x))
+issimulatable(x) = simulatable(x) isa IsSimulatable
+
+# ============================================================================
 # Core Types
 # ============================================================================
 
@@ -120,5 +158,11 @@ end
 export AbstractInstrument, AbstractEquity, AbstractDerivative, AbstractOption, AbstractFuture
 export AbstractPortfolio, AbstractRiskMeasure, AbstractADBackend
 export MarketState, ImmutableDict
+export Priceable, IsPriceable, NotPriceable
+export Differentiable, IsDifferentiable, NotDifferentiable
+export HasGreeks, HasGreeksTrait, NoGreeksTrait
+export Simulatable, IsSimulatable, NotSimulatable
+export priceable, ispriceable, differentiable, isdifferentiable
+export greeks_trait, hasgreeks, simulatable, issimulatable
 
 end

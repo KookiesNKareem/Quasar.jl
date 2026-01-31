@@ -5,7 +5,13 @@ include("Core/Core.jl")
 using .Core
 export AbstractInstrument, AbstractEquity, AbstractDerivative, AbstractOption, AbstractFuture
 export AbstractPortfolio, AbstractRiskMeasure, AbstractADBackend
-export MarketState, Priceable, Differentiable, HasGreeks, Simulatable
+export MarketState
+export Priceable, IsPriceable, NotPriceable
+export Differentiable, IsDifferentiable, NotDifferentiable
+export HasGreeks, HasGreeksTrait, NoGreeksTrait
+export Simulatable, IsSimulatable, NotSimulatable
+export priceable, ispriceable, differentiable, isdifferentiable
+export greeks_trait, hasgreeks, simulatable, issimulatable
 
 # AD backend system
 include("AD/AD.jl")
