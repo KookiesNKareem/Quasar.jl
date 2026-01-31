@@ -210,4 +210,67 @@ using Dates
         @test results[1].shock < results[end].shock
         @test results[1].portfolio_value < results[end].portfolio_value
     end
+
+    @testset "Monte Carlo Projections" begin
+        state = SimulationState(
+            timestamp=DateTime(2024, 1, 1),
+            cash=10_000.0,
+            positions=Dict(:SPY => 100.0, :AGG => 50.0),
+            prices=Dict(:SPY => 450.0, :AGG => 100.0)
+        )
+
+        # Define expected returns and covariance
+        expected_returns = Dict(:SPY => 0.08, :AGG => 0.03)  # Annual
+        volatilities = Dict(:SPY => 0.18, :AGG => 0.05)
+        correlation = 0.2
+
+        # Run Monte Carlo projection
+        projection = monte_carlo_projection(
+            state,
+            expected_returns,
+            volatilities;
+            correlation=correlation,
+            horizon_days=252,
+            n_simulations=1000
+        )
+
+        @test projection isa ProjectionResult
+        @test length(projection.terminal_values) == 1000
+        @test projection.horizon_days == 252
+
+        # VaR and CVaR
+        @test projection.var_95 < portfolio_value(state)  # VaR is a loss threshold
+        @test projection.cvar_95 < projection.var_95      # CVaR is worse than VaR
+
+        # Percentiles
+        @test projection.percentile_5 < projection.percentile_50
+        @test projection.percentile_50 < projection.percentile_95
+    end
+
+    @testset "Projection with Correlated Assets" begin
+        state = SimulationState(
+            timestamp=DateTime(2024, 1, 1),
+            cash=0.0,
+            positions=Dict(:A => 100.0, :B => 100.0),
+            prices=Dict(:A => 100.0, :B => 100.0)
+        )
+
+        expected_returns = Dict(:A => 0.10, :B => 0.10)
+        volatilities = Dict(:A => 0.20, :B => 0.20)
+
+        # Perfectly correlated
+        proj_corr = monte_carlo_projection(
+            state, expected_returns, volatilities;
+            correlation=0.99, n_simulations=500
+        )
+
+        # Negatively correlated
+        proj_neg = monte_carlo_projection(
+            state, expected_returns, volatilities;
+            correlation=-0.99, n_simulations=500
+        )
+
+        # Negative correlation should reduce volatility
+        @test std(proj_neg.terminal_values) < std(proj_corr.terminal_values)
+    end
 end

@@ -1,6 +1,8 @@
 module ScenarioAnalysis
 
 using Dates
+using Random
+using LinearAlgebra: cholesky, Symmetric
 using Statistics: mean, std, quantile
 using ..Simulation: SimulationState, portfolio_value
 
@@ -353,6 +355,147 @@ function sensitivity_analysis(
 end
 
 # ============================================================================
+# Monte Carlo Projections
+# ============================================================================
+
+"""
+    ProjectionResult
+
+Results from Monte Carlo portfolio projection.
+"""
+struct ProjectionResult
+    initial_value::Float64
+    terminal_values::Vector{Float64}
+    horizon_days::Int
+    n_simulations::Int
+
+    # Statistics
+    mean_value::Float64
+    median_value::Float64
+    std_value::Float64
+
+    # Percentiles
+    percentile_5::Float64
+    percentile_25::Float64
+    percentile_50::Float64
+    percentile_75::Float64
+    percentile_95::Float64
+
+    # Risk measures
+    var_95::Float64   # 5th percentile (95% VaR)
+    cvar_95::Float64  # Mean below VaR
+
+    # Probability of loss
+    prob_loss::Float64
+end
+
+"""
+    monte_carlo_projection(state, expected_returns, volatilities; kwargs...)
+
+Project portfolio forward using Monte Carlo simulation.
+
+# Arguments
+- `state::SimulationState` - Current portfolio state
+- `expected_returns::Dict{Symbol,Float64}` - Annual expected returns per asset
+- `volatilities::Dict{Symbol,Float64}` - Annual volatilities per asset
+- `correlation::Float64=0.3` - Pairwise correlation (simplified)
+- `horizon_days::Int=252` - Projection horizon in days
+- `n_simulations::Int=10000` - Number of Monte Carlo paths
+- `rng` - Random number generator (optional)
+
+# Returns
+`ProjectionResult` with distribution of terminal values and risk metrics.
+"""
+function monte_carlo_projection(
+    state::SimulationState,
+    expected_returns::Dict{Symbol,Float64},
+    volatilities::Dict{Symbol,Float64};
+    correlation::Float64=0.3,
+    horizon_days::Int=252,
+    n_simulations::Int=10000,
+    rng=nothing
+)
+    rng = isnothing(rng) ? Random.default_rng() : rng
+
+    # Get assets in portfolio
+    assets = collect(keys(state.positions))
+    n_assets = length(assets)
+
+    # Build correlation matrix
+    corr_matrix = fill(correlation, n_assets, n_assets)
+    for i in 1:n_assets
+        corr_matrix[i, i] = 1.0
+    end
+
+    # Cholesky decomposition for correlated random numbers
+    L = cholesky(Symmetric(corr_matrix)).L
+
+    # Convert to daily parameters
+    daily_returns = [expected_returns[a] / 252 for a in assets]
+    daily_vols = [volatilities[a] / sqrt(252) for a in assets]
+
+    # Get initial values
+    initial_values = [state.positions[a] * state.prices[a] for a in assets]
+    initial_portfolio = state.cash + sum(initial_values)
+
+    # Run simulations
+    terminal_values = Vector{Float64}(undef, n_simulations)
+
+    for sim in 1:n_simulations
+        # Simulate each asset's terminal value
+        asset_values = copy(initial_values)
+
+        for day in 1:horizon_days
+            # Generate correlated random numbers
+            Z = randn(rng, n_assets)
+            corr_Z = L * Z
+
+            # Update each asset
+            for i in 1:n_assets
+                drift = (daily_returns[i] - 0.5 * daily_vols[i]^2)
+                diffusion = daily_vols[i] * corr_Z[i]
+                asset_values[i] *= exp(drift + diffusion)
+            end
+        end
+
+        terminal_values[sim] = state.cash + sum(asset_values)
+    end
+
+    # Compute statistics
+    sorted_vals = sort(terminal_values)
+    mean_val = mean(terminal_values)
+    median_val = quantile(terminal_values, 0.5)
+    std_val = std(terminal_values)
+
+    p5 = quantile(terminal_values, 0.05)
+    p25 = quantile(terminal_values, 0.25)
+    p50 = quantile(terminal_values, 0.50)
+    p75 = quantile(terminal_values, 0.75)
+    p95 = quantile(terminal_values, 0.95)
+
+    # VaR and CVaR (as values, not losses)
+    var_95 = p5  # 5th percentile
+    cvar_95 = mean(filter(v -> v <= var_95, terminal_values))
+
+    # Probability of loss
+    prob_loss = count(v -> v < initial_portfolio, terminal_values) / n_simulations
+
+    ProjectionResult(
+        initial_portfolio,
+        terminal_values,
+        horizon_days,
+        n_simulations,
+        mean_val,
+        median_val,
+        std_val,
+        p5, p25, p50, p75, p95,
+        var_95,
+        cvar_95,
+        prob_loss
+    )
+end
+
+# ============================================================================
 # Exports
 # ============================================================================
 
@@ -360,5 +503,6 @@ export StressScenario, ScenarioImpact, CRISIS_SCENARIOS
 export apply_scenario, scenario_impact
 export compare_scenarios, worst_case_scenario
 export SensitivityResult, sensitivity_analysis
+export ProjectionResult, monte_carlo_projection
 
 end
