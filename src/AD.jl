@@ -151,7 +151,7 @@ function _throw_backend_not_loaded(::ReactantBackend)
 
     To use GPU acceleration:
         using Reactant
-        using Nova
+        using SuperNova
 
     Then set_backend!(ReactantBackend()) will work.
     """)
@@ -163,7 +163,7 @@ function _throw_backend_not_loaded(::EnzymeBackend)
 
     To use Enzyme:
         using Enzyme
-        using Nova
+        using SuperNova
 
     Then set_backend!(EnzymeBackend()) will work.
     """)
@@ -289,7 +289,7 @@ Initialize GPU backend. Detects available hardware and loads appropriate extensi
 # Example
 ```julia
 using Reactant
-using Nova
+using SuperNova
 enable_gpu!()  # auto-detects Reactant
 ```
 """

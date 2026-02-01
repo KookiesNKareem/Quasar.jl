@@ -1,6 +1,6 @@
-# Nova vs QuantLib C++ Performance Comparison
+# SuperNova vs QuantLib C++ Performance Comparison
 #
-# This script runs both the C++ QuantLib benchmark and Julia Nova benchmark
+# This script runs both the C++ QuantLib benchmark and Julia SuperNova benchmark
 # and compares the results. Use this to detect performance regressions.
 #
 # Prerequisites:
@@ -10,7 +10,7 @@
 # Usage:
 #   julia --project run_comparison.jl [--compile]
 
-using Nova
+using SuperNova
 using Statistics
 
 const QUANTLIB_DIR = expanduser("~/dev/QuantLib")
@@ -91,7 +91,7 @@ function benchmark_nova(n_runs=1000, n_warmup=100)
         return median(times)
     end
 
-    println("\nRunning Nova.jl benchmark...")
+    println("\nRunning SuperNova.jl benchmark...")
 
     european = bench(() -> black_scholes(S, K, T, r, σ, :call))
     greeks = bench(() -> compute_greeks(opt, state))
@@ -102,7 +102,7 @@ end
 
 function run_comparison(; compile=false)
     println("="^70)
-    println("NOVA.JL vs QUANTLIB C++ PERFORMANCE COMPARISON")
+    println("SUPERNOVA.JL vs QUANTLIB C++ PERFORMANCE COMPARISON")
     println("="^70)
 
     if compile
@@ -116,7 +116,7 @@ function run_comparison(; compile=false)
     println("RESULTS")
     println("="^70)
     println()
-    println("  Benchmark              Nova.jl (μs)   QuantLib (μs)   Speedup")
+    println("  Benchmark              SuperNova.jl (μs)   QuantLib (μs)   Speedup")
     println("  " * "─"^60)
 
     function row(name, n, q)

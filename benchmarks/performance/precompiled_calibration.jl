@@ -18,7 +18,7 @@
 # - Single calibration runs
 # - Very small problems (< 10 strikes)
 
-using Nova
+using SuperNova
 using Printf
 using Statistics: median
 
@@ -38,7 +38,7 @@ function run_precompiled_benchmark(; n_strikes::Int=20, n_iterations::Int=100, v
 
     # True params for synthetic data
     α_true, ρ_true, ν_true = 0.25, -0.3, 0.4
-    market_vols = [Nova.BatchPricing._sabr_vol_gpu(F, K, T, α_true, β, ρ_true, ν_true) for K in strikes]
+    market_vols = [SuperNova.BatchPricing._sabr_vol_gpu(F, K, T, α_true, β, ρ_true, ν_true) for K in strikes]
 
     # Starting point
     x0 = [0.2, 0.0, log(0.3)]
@@ -96,7 +96,7 @@ function run_precompiled_benchmark(; n_strikes::Int=20, n_iterations::Int=100, v
             println()
             println("Reactant not available. To enable GPU benchmarks:")
             println("  using Reactant")
-            println("  using Nova")
+            println("  using SuperNova")
         end
         return results
     end

@@ -20,7 +20,7 @@ export
     # Bonds
     Bond, ZeroCouponBond, FixedRateBond, FloatingRateBond,
     # Note: price() not exported to avoid collision with Instruments.price
-    # Use Nova.InterestRates.price() for bond pricing
+    # Use SuperNova.InterestRates.price() for bond pricing
     yield_to_maturity, duration, modified_duration, convexity, dv01,
     accrued_interest, clean_price, dirty_price,
     # Short rate models

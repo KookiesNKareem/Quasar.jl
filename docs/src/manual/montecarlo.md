@@ -1,6 +1,6 @@
 # Monte Carlo Simulation
 
-Nova provides a comprehensive Monte Carlo engine for pricing path-dependent derivatives.
+SuperNova provides a comprehensive Monte Carlo engine for pricing path-dependent derivatives.
 
 ## Dynamics
 
@@ -103,7 +103,7 @@ Compute sensitivities via pathwise differentiation:
 
 ```julia
 using Enzyme
-using Nova
+using SuperNova
 
 # Delta only
 delta = mc_delta(S0, T, payoff, dynamics;
@@ -160,15 +160,15 @@ For custom payoffs or analysis, simulate paths directly:
 
 ```julia
 # Single GBM path
-path = Nova.MonteCarlo.simulate_gbm(S0, T, nsteps, dynamics)
+path = SuperNova.MonteCarlo.simulate_gbm(S0, T, nsteps, dynamics)
 
 # Antithetic pair
-path1, path2 = Nova.MonteCarlo.simulate_gbm_antithetic(S0, T, nsteps, dynamics)
+path1, path2 = SuperNova.MonteCarlo.simulate_gbm_antithetic(S0, T, nsteps, dynamics)
 
 # Heston path
-path = Nova.MonteCarlo.simulate_heston(S0, T, nsteps, heston_dynamics)
+path = SuperNova.MonteCarlo.simulate_heston(S0, T, nsteps, heston_dynamics)
 
 # QMC path (deterministic)
 Z = sobol_normals(nsteps, 1)
-path = Nova.MonteCarlo.simulate_gbm_qmc(S0, T, nsteps, dynamics, Z[1, :])
+path = SuperNova.MonteCarlo.simulate_gbm_qmc(S0, T, nsteps, dynamics, Z[1, :])
 ```

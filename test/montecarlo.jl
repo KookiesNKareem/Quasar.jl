@@ -8,13 +8,13 @@ using Statistics: mean, std
         dynamics = GBMDynamics(0.05, 0.2)
         S0, T, nsteps = 100.0, 1.0, 252
 
-        path = Nova.MonteCarlo.simulate_gbm(S0, T, nsteps, dynamics)
+        path = SuperNova.MonteCarlo.simulate_gbm(S0, T, nsteps, dynamics)
         @test length(path) == nsteps + 1
         @test path[1] == S0
         @test all(path .> 0)  # Prices stay positive
 
         # Antithetic paths
-        path1, path2 = Nova.MonteCarlo.simulate_gbm_antithetic(S0, T, nsteps, dynamics)
+        path1, path2 = SuperNova.MonteCarlo.simulate_gbm_antithetic(S0, T, nsteps, dynamics)
         @test length(path1) == nsteps + 1
         @test length(path2) == nsteps + 1
         @test path1[1] == path2[1] == S0
@@ -24,7 +24,7 @@ using Statistics: mean, std
         dynamics = HestonDynamics(0.05, 0.04, 2.0, 0.04, 0.3, -0.7)
         S0, T, nsteps = 100.0, 1.0, 252
 
-        path = Nova.MonteCarlo.simulate_heston(S0, T, nsteps, dynamics)
+        path = SuperNova.MonteCarlo.simulate_heston(S0, T, nsteps, dynamics)
         @test length(path) == nsteps + 1
         @test path[1] == S0
         @test all(path .> 0)
@@ -156,12 +156,12 @@ using Statistics: mean, std
         @test abs(result1.price - bs_price) < 3 * result1.stderr
 
         # Sobol normals are deterministic
-        Z1 = Nova.MonteCarlo.sobol_normals(10, 100)
-        Z2 = Nova.MonteCarlo.sobol_normals(10, 100)
+        Z1 = SuperNova.MonteCarlo.sobol_normals(10, 100)
+        Z2 = SuperNova.MonteCarlo.sobol_normals(10, 100)
         @test Z1 == Z2
 
         # Sobol normals have approximately correct statistics
-        Z = Nova.MonteCarlo.sobol_normals(1, 10000)
+        Z = SuperNova.MonteCarlo.sobol_normals(1, 10000)
         @test abs(mean(Z)) < 0.05  # Near zero mean
         @test abs(std(Z) - 1.0) < 0.1  # Near unit variance
     end
@@ -211,10 +211,10 @@ using Statistics: mean, std
         @test abs(am_call.price - eu_call.price) < 3 * max(am_call.stderr, eu_call.stderr)
 
         # Intrinsic value sanity check
-        @test Nova.MonteCarlo.intrinsic(AmericanPut(100.0), 80.0) == 20.0
-        @test Nova.MonteCarlo.intrinsic(AmericanPut(100.0), 120.0) == 0.0
-        @test Nova.MonteCarlo.intrinsic(AmericanCall(100.0), 120.0) == 20.0
-        @test Nova.MonteCarlo.intrinsic(AmericanCall(100.0), 80.0) == 0.0
+        @test SuperNova.MonteCarlo.intrinsic(AmericanPut(100.0), 80.0) == 20.0
+        @test SuperNova.MonteCarlo.intrinsic(AmericanPut(100.0), 120.0) == 0.0
+        @test SuperNova.MonteCarlo.intrinsic(AmericanCall(100.0), 120.0) == 20.0
+        @test SuperNova.MonteCarlo.intrinsic(AmericanCall(100.0), 80.0) == 0.0
     end
 
 end

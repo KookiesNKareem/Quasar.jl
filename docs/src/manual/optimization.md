@@ -1,6 +1,6 @@
 # Portfolio Optimization
 
-Nova provides differentiable portfolio optimization with multiple objective functions.
+SuperNova provides differentiable portfolio optimization with multiple objective functions.
 
 ## Objectives
 
@@ -60,7 +60,7 @@ Optimization uses the current AD backend for gradient computation:
 
 ```julia
 using Enzyme
-using Nova
+using SuperNova
 
 # Use Enzyme for faster gradients on large portfolios
 with_backend(EnzymeBackend()) do
@@ -91,7 +91,7 @@ H = hessian(f, w0; backend=EnzymeBackend())
 
 ## Model Calibration
 
-Nova also supports model calibration using AD-powered optimization.
+SuperNova also supports model calibration using AD-powered optimization.
 
 ### SABR Calibration
 

@@ -1,28 +1,28 @@
-# Nova.jl - Differentiable Quantitative Finance
+# SuperNova.jl - Differentiable Quantitative Finance
 
-I'm sharing **Nova.jl**, a quant finance library built around two ideas: a unified API and automatic differentiation everywhere.
+I'm sharing **SuperNova.jl**, a quant finance library built around two ideas: a unified API and automatic differentiation everywhere.
 
-**GitHub:** https://github.com/KookiesNKareem/Nova.jl
-**Docs:** https://KookiesNKareem.github.io/Nova.jl/dev/
+**GitHub:** https://github.com/KookiesNKareem/SuperNova.jl
+**Docs:** https://KookiesNKareem.github.io/SuperNova.jl/dev/
 
 ## Performance
 
-Nova.jl vs [QuantLib](https://www.quantlib.org/) C++ (v1.41):
+SuperNova.jl vs [QuantLib](https://www.quantlib.org/) C++ (v1.41):
 
-| Benchmark | Nova.jl | QuantLib C++ | Speedup |
+| Benchmark | SuperNova.jl | QuantLib C++ | Speedup |
 |-----------|---------|--------------|---------|
 | European option | 0.04 μs | 5.7 μs | **139x** |
 | Greeks (all 5) | 0.08 μs | 5.7 μs | **69x** |
 | American option (binomial) | 8.4 μs | 67 μs | **8x** |
 
-QuantLib builds a reusable object graph per instrument; Nova compiles specialized native code via Julia's JIT. The 8x speedup on American options reflects pure algorithm performance. Benchmarks on Apple M1 — full methodology in `benchmarks/comparison/`.
+QuantLib builds a reusable object graph per instrument; SuperNova compiles specialized native code via Julia's JIT. The 8x speedup on American options reflects pure algorithm performance. Benchmarks on Apple M1 — full methodology in `benchmarks/comparison/`.
 
-## Why Nova?
+## Why SuperNova?
 
 **One API, everything differentiable.** Price an option, compute Greeks, calibrate a model, optimize a portfolio—it's all the same interface, and gradients flow through automatically.
 
 ```julia
-using Nova
+using SuperNova
 
 # Price
 black_scholes(S, K, T, r, σ, :call)
@@ -60,7 +60,7 @@ gradient(f, x; backend=ReactantBackend())   # GPU
 
 ```julia
 using Pkg
-Pkg.add(url="https://github.com/KookiesNKareem/Nova.jl")
+Pkg.add(url="https://github.com/KookiesNKareem/SuperNova.jl")
 ```
 
 Feedback and contributions welcome!

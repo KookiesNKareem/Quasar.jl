@@ -1,7 +1,7 @@
 # Calibration Performance Benchmark
 # Compares CPU (ForwardDiff) vs GPU (Reactant) calibration timing
 
-using Nova
+using SuperNova
 using Printf
 using Statistics: mean, std, median
 
@@ -240,7 +240,7 @@ function run_calibration_timing_benchmark(; verbose::Bool=true,
         println()
         println("Note: Reactant not loaded. To enable GPU benchmarks:")
         println("  using Reactant")
-        println("  using Nova")
+        println("  using SuperNova")
     end
 
     if verbose

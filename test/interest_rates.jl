@@ -1,9 +1,9 @@
 using Test
-using Nova
-using Nova.InterestRates
+using SuperNova
+using SuperNova.InterestRates
 
 # Use module-qualified price to avoid collision with Instruments.price
-const ir_price = Nova.InterestRates.price
+const ir_price = SuperNova.InterestRates.price
 
 @testset "Interest Rates" begin
 
@@ -282,7 +282,7 @@ const ir_price = Nova.InterestRates.price
             rate = 0.05
 
             # Should have 10 cash flows
-            cfs = Nova.InterestRates.cash_flows(bond)
+            cfs = SuperNova.InterestRates.cash_flows(bond)
             @test length(cfs) == 10
             @test cfs[1][2] ≈ 2.0  # First coupon
             @test cfs[end][2] ≈ 102.0  # Last coupon + principal
@@ -410,7 +410,7 @@ const ir_price = Nova.InterestRates.price
             floor = Floor(3.0, strike, 4, 1e6)
 
             cap_price = black_cap(cap, curve, vol)
-            floor_price = Nova.InterestRates.black_floor(floor, curve, vol)
+            floor_price = SuperNova.InterestRates.black_floor(floor, curve, vol)
 
             # Cap - Floor = Swap value (approximately)
             # For ATM, swap ≈ 0, so cap ≈ floor

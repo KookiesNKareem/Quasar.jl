@@ -1,4 +1,4 @@
-// QuantLib C++ Benchmark for fair comparison with Nova.jl
+// QuantLib C++ Benchmark for fair comparison with SuperNova.jl
 //
 // Compile with:
 // clang++ -std=c++17 -O3 -I$HOME/dev/QuantLib -L$HOME/dev/QuantLib/build/ql \

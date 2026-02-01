@@ -1,12 +1,12 @@
-# Nova vs QuantLib Comparison Benchmark
+# SuperNova vs QuantLib Comparison Benchmark
 #
-# Compares Nova.jl against QuantLib (the industry-standard C++ library)
+# Compares SuperNova.jl against QuantLib (the industry-standard C++ library)
 # via Python bindings for:
 # 1. European option pricing (Black-Scholes)
 # 2. Greeks computation (Delta, Gamma, Vega, Theta, Rho)
 # 3. American option pricing (binomial tree)
 
-using Nova
+using SuperNova
 using PyCall
 using Statistics
 using Printf
@@ -86,7 +86,7 @@ function quantlib_european_greeks(S, K, T, r, σ, optiontype::Symbol)
         delta = option.delta(),
         gamma = option.gamma(),
         vega = option.vega() / 100,  # QuantLib returns per 100% vol change
-        theta = option.theta(),  # QuantLib returns per-day theta; Nova returns per-year
+        theta = option.theta(),  # QuantLib returns per-day theta; SuperNova returns per-year
         rho = option.rho() / 100  # QuantLib returns per 100% rate change
     )
 end
@@ -163,7 +163,7 @@ function run_european_pricing_benchmark(; n_runs=100)
     ql_price = quantlib_european_price(S, K, T, r, σ, :call)
 
     println("\nPrice verification (S=$S, K=$K, T=$T, r=$r, σ=$σ):")
-    println("  Nova.jl:   $(round(nova_price, digits=6))")
+    println("  SuperNova.jl:   $(round(nova_price, digits=6))")
     println("  QuantLib:  $(round(ql_price, digits=6))")
     println("  Diff:      $(round(abs(nova_price - ql_price), digits=10))")
 
@@ -175,7 +175,7 @@ function run_european_pricing_benchmark(; n_runs=100)
 
     speedup = ql_times.median / nova_times.median
 
-    println("  Nova.jl:   $(round(nova_times.median, digits=2)) μs (median)")
+    println("  SuperNova.jl:   $(round(nova_times.median, digits=2)) μs (median)")
     println("  QuantLib:  $(round(ql_times.median, digits=2)) μs (median)")
     println("  Speedup:   $(round(speedup, digits=1))x")
 
@@ -189,7 +189,7 @@ function run_greeks_benchmark(; n_runs=100)
 
     S, K, T, r, σ = 100.0, 100.0, 1.0, 0.05, 0.2
 
-    # Create Nova option and state
+    # Create SuperNova option and state
     state = MarketState(
         prices = Dict("TEST" => S),
         rates = Dict("USD" => r),
@@ -202,12 +202,12 @@ function run_greeks_benchmark(; n_runs=100)
     nova_greeks = compute_greeks(option, state)
     ql_greeks = quantlib_european_greeks(S, K, T, r, σ, :call)
 
-    # Note: Theta units differ - Nova is per-year, QuantLib is per-day
-    # Convert Nova theta to per-day for comparison
+    # Note: Theta units differ - SuperNova is per-year, QuantLib is per-day
+    # Convert SuperNova theta to per-day for comparison
     nova_theta_daily = nova_greeks.theta / 365
 
     println("\nGreeks verification:")
-    println("  Metric    Nova.jl     QuantLib    Diff")
+    println("  Metric    SuperNova.jl     QuantLib    Diff")
     println("  ─────────────────────────────────────────")
     @printf("  Delta     %+.6f   %+.6f   %.2e\n", nova_greeks.delta, ql_greeks.delta, abs(nova_greeks.delta - ql_greeks.delta))
     @printf("  Gamma     %+.6f   %+.6f   %.2e\n", nova_greeks.gamma, ql_greeks.gamma, abs(nova_greeks.gamma - ql_greeks.gamma))
@@ -224,7 +224,7 @@ function run_greeks_benchmark(; n_runs=100)
 
     speedup = ql_times.median / nova_times.median
 
-    println("  Nova.jl (AD):      $(round(nova_times.median, digits=2)) μs (median)")
+    println("  SuperNova.jl (AD):      $(round(nova_times.median, digits=2)) μs (median)")
     println("  QuantLib (analytic): $(round(ql_times.median, digits=2)) μs (median)")
     println("  Speedup:           $(round(speedup, digits=1))x")
 
@@ -243,7 +243,7 @@ function run_american_benchmark(; n_runs=50, nsteps=100)
     ql_price = quantlib_american_price(S, K, T, r, σ, :put; nsteps=nsteps)
 
     println("\nPrice verification (American put):")
-    println("  Nova.jl:   $(round(nova_price, digits=6))")
+    println("  SuperNova.jl:   $(round(nova_price, digits=6))")
     println("  QuantLib:  $(round(ql_price, digits=6))")
     println("  Diff:      $(round(abs(nova_price - ql_price), digits=6))")
 
@@ -255,7 +255,7 @@ function run_american_benchmark(; n_runs=50, nsteps=100)
 
     speedup = ql_times.median / nova_times.median
 
-    println("  Nova.jl:   $(round(nova_times.median, digits=2)) μs (median)")
+    println("  SuperNova.jl:   $(round(nova_times.median, digits=2)) μs (median)")
     println("  QuantLib:  $(round(ql_times.median, digits=2)) μs (median)")
     println("  Speedup:   $(round(speedup, digits=1))x")
 
@@ -274,7 +274,7 @@ function run_batch_pricing_benchmark(; n_options=1000, n_runs=10)
     Ts = 0.1 .+ 1.9 .* rand(n_options)
     σs = 0.1 .+ 0.4 .* rand(n_options)
 
-    # Nova batch pricing
+    # SuperNova batch pricing
     function nova_batch()
         prices = Vector{Float64}(undef, n_options)
         for i in 1:n_options
@@ -303,7 +303,7 @@ function run_batch_pricing_benchmark(; n_options=1000, n_runs=10)
     nova_per_opt = nova_times.median / n_options
     ql_per_opt = ql_times.median / n_options
 
-    println("  Nova.jl:   $(round(nova_times.median/1000, digits=2)) ms total, $(round(nova_per_opt, digits=3)) μs/option")
+    println("  SuperNova.jl:   $(round(nova_times.median/1000, digits=2)) ms total, $(round(nova_per_opt, digits=3)) μs/option")
     println("  QuantLib:  $(round(ql_times.median/1000, digits=2)) ms total, $(round(ql_per_opt, digits=3)) μs/option")
     println("  Speedup:   $(round(speedup, digits=1))x")
 
@@ -319,7 +319,7 @@ function run_all_benchmarks(; verbose=true)
     println("NOVA.JL vs QUANTLIB BENCHMARK SUITE")
     println("="^70)
     println("\nQuantLib version: $(ql.__version__)")
-    println("Nova.jl: Differentiable Quantitative Finance Library")
+    println("SuperNova.jl: Differentiable Quantitative Finance Library")
 
     results = Dict{String, Any}()
 
@@ -332,7 +332,7 @@ function run_all_benchmarks(; verbose=true)
     println("\n" * "="^70)
     println("SUMMARY")
     println("="^70)
-    println("\n  Benchmark              Nova.jl (μs)   QuantLib (μs)   Speedup")
+    println("\n  Benchmark              SuperNova.jl (μs)   QuantLib (μs)   Speedup")
     println("  ─────────────────────────────────────────────────────────────")
     @printf("  European pricing       %8.1f       %8.1f         %5.1fx\n",
             results["european"].nova.median, results["european"].quantlib.median, results["european"].speedup)

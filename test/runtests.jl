@@ -1,5 +1,5 @@
 using Test
-using Nova
+using SuperNova
 
 # NOTE: The following test categories have been implemented:
 # ✓ Edge case tests (T→0, S→0, K→∞, σ→0) - see instruments.jl
@@ -12,7 +12,7 @@ using Nova
 # ✓ Day count convention tests - see interest_rates.jl
 
 # Remaining TODOs for future work:
-# TODO: Enable doctests: @testset "Doctests" begin doctest(Nova) end
+# TODO: Enable doctests: @testset "Doctests" begin doctest(SuperNova) end
 # TODO: Add integration tests (end-to-end workflows)
 # TODO: Add performance regression tests
 # TODO: Add GPU backend tests (Reactant, Enzyme) - requires GPU hardware
@@ -20,7 +20,7 @@ using Nova
 # TODO: Add MCResult confidence intervals correctness tests
 # TODO: Add calibration robustness tests (noisy data, edge cases)
 
-@testset "Nova.jl" begin
+@testset "SuperNova.jl" begin
     include("core.jl")
     include("ad.jl")
     include("instruments.jl")

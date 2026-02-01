@@ -83,7 +83,7 @@ function PrecompiledSABRCalibrator(F::Float64, T::Float64, β::Float64,
     PrecompiledSABRCalibrator(F, T, β, strikes, market_vols, n, nothing, backend)
 end
 
-# Extension hooks - set by NovaReactantExt when loaded
+# Extension hooks - set by SuperNovaReactantExt when loaded
 const _REACTANT_COMPILE_GPU = Ref{Any}(nothing)
 const _REACTANT_CALL_GRAD = Ref{Any}(nothing)
 

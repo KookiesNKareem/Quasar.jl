@@ -5,7 +5,7 @@ This example demonstrates pricing exotic options using Monte Carlo simulation wi
 ## Setup
 
 ```julia
-using Nova
+using SuperNova
 ```
 
 ## Basic Monte Carlo Pricing
@@ -407,7 +407,7 @@ For custom payoffs or analysis, simulate paths directly:
 ```julia
 # Simulate a single GBM path
 dynamics = GBMDynamics(0.05, 0.20)
-path = Nova.MonteCarlo.simulate_gbm(S0, T, 252, dynamics)
+path = SuperNova.MonteCarlo.simulate_gbm(S0, T, 252, dynamics)
 
 println("\nSimulated GBM Path:")
 println("  Initial: \$$(round(path[1], digits=2))")
@@ -416,14 +416,14 @@ println("  Min:     \$$(round(minimum(path), digits=2))")
 println("  Max:     \$$(round(maximum(path), digits=2))")
 
 # Antithetic pair
-path1, path2 = Nova.MonteCarlo.simulate_gbm_antithetic(S0, T, 252, dynamics)
+path1, path2 = SuperNova.MonteCarlo.simulate_gbm_antithetic(S0, T, 252, dynamics)
 println("\nAntithetic Pair:")
 println("  Path 1 final: \$$(round(path1[end], digits=2))")
 println("  Path 2 final: \$$(round(path2[end], digits=2))")
 
 # QMC path (deterministic)
 Z = sobol_normals(252, 1)
-path_qmc = Nova.MonteCarlo.simulate_gbm_qmc(S0, T, 252, dynamics, Z[1, :])
+path_qmc = SuperNova.MonteCarlo.simulate_gbm_qmc(S0, T, 252, dynamics, Z[1, :])
 println("\nQMC Path (deterministic):")
 println("  Final: \$$(round(path_qmc[end], digits=2))")
 ```
@@ -438,7 +438,7 @@ function price_lookback_call(S0, T, K, dynamics; npaths=50000, nsteps=252)
     total_payoff = 0.0
 
     for _ in 1:npaths
-        path = Nova.MonteCarlo.simulate_gbm(S0, T, nsteps, dynamics)
+        path = SuperNova.MonteCarlo.simulate_gbm(S0, T, nsteps, dynamics)
         S_max = maximum(path)
         payoff = max(S_max - K, 0)
         total_payoff += payoff

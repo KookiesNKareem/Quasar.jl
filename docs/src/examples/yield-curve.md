@@ -5,12 +5,12 @@ This example demonstrates building yield curves from market data, pricing fixed 
 ## Setup
 
 ```julia
-using Nova
+using SuperNova
 ```
 
 ## Curve Representations
 
-Nova provides three equivalent curve representations:
+SuperNova provides three equivalent curve representations:
 
 ```julia
 # Times and rates for examples
@@ -259,13 +259,13 @@ println("  Yield: $(round(-log(pv/100)/5 * 100, digits=3))%")
 # 5-year bond, 6% coupon, semi-annual
 bond = FixedRateBond(5.0, 0.06, 2)
 
-# Price at a yield (use Nova.InterestRates.price to avoid conflict)
-pv_yield = Nova.InterestRates.price(bond, 0.055)  # Price at 5.5% yield
+# Price at a yield (use SuperNova.InterestRates.price to avoid conflict)
+pv_yield = SuperNova.InterestRates.price(bond, 0.055)  # Price at 5.5% yield
 println("\n5Y 6% Coupon Bond:")
 println("  Price at 5.5% yield: \$$(round(pv_yield, digits=4))")
 
 # Price using curve
-pv_curve = Nova.InterestRates.price(bond, curve)
+pv_curve = SuperNova.InterestRates.price(bond, curve)
 println("  Price using market curve: \$$(round(pv_curve, digits=4))")
 
 # Yield to maturity

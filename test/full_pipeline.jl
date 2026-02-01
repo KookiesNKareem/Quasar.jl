@@ -1,5 +1,5 @@
 using Test
-using Nova
+using SuperNova
 using Statistics
 
 @testset "Full Pipeline Integration" begin

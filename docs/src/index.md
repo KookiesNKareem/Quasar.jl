@@ -2,7 +2,7 @@
 layout: home
 
 hero:
-  name: Nova.jl
+  name: SuperNova.jl
   text: Differentiable Quantitative Finance
   tagline: High-performance derivatives pricing with automatic differentiation
   actions:
@@ -11,7 +11,7 @@ hero:
       link: /getting-started/installation
     - theme: alt
       text: View on GitHub
-      link: https://github.com/KookiesNKareem/Nova.jl
+      link: https://github.com/KookiesNKareem/SuperNova.jl
 ---
 
 <div class="metrics-bar">
@@ -39,7 +39,7 @@ hero:
 <div class="code-input">
 
 ```julia
-using Nova
+using SuperNova
 S0, K, T, r, σ = 100.0, 100.0, 1.0, 0.05, 0.2
 price = black_scholes(S0, K, T, r, σ, :call)
 ```

@@ -7,7 +7,7 @@ Stress testing and forward projections for portfolios.
 Apply historical crisis scenarios:
 
 ```julia
-using Nova
+using SuperNova
 
 # Portfolio state
 state = SimulationState(

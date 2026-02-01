@@ -1,9 +1,9 @@
-# Nova
+# SuperNova
 
-[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://KookiesNKareem.github.io/Nova.jl/stable/)
-[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://KookiesNKareem.github.io/Nova.jl/dev/)
-[![Build Status](https://github.com/KookiesNKareem/Nova.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/KookiesNKareem/Nova.jl/actions/workflows/CI.yml?query=branch%3Amain)
-[![Coverage](https://codecov.io/gh/KookiesNKareem/Nova.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/KookiesNKareem/Nova.jl)
+[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://KookiesNKareem.github.io/SuperNova.jl/stable/)
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://KookiesNKareem.github.io/SuperNova.jl/dev/)
+[![Build Status](https://github.com/KookiesNKareem/SuperNova.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/KookiesNKareem/SuperNova.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![Coverage](https://codecov.io/gh/KookiesNKareem/SuperNova.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/KookiesNKareem/SuperNova.jl)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Julia](https://img.shields.io/badge/Julia-1.11+-9558B2.svg?logo=julia)](https://julialang.org/)
 [![Code Style: Blue](https://img.shields.io/badge/code%20style-blue-4495d1.svg)](https://github.com/invenia/BlueStyle)
@@ -12,9 +12,9 @@ A differentiable quantitative finance library for Julia.
 
 ## Performance
 
-Nova.jl vs [QuantLib](https://www.quantlib.org/) C++ (v1.41):
+SuperNova.jl vs [QuantLib](https://www.quantlib.org/) C++ (v1.41):
 
-| Benchmark | Nova.jl | QuantLib C++ | |
+| Benchmark | SuperNova.jl | QuantLib C++ | |
 |-----------|---------|--------------|---------|
 | European option pricing | 0.04 μs | 5.7 μs | **139x faster** |
 | Greeks (all 5) | 0.08 μs | 5.7 μs | **69x faster** |
@@ -22,7 +22,7 @@ Nova.jl vs [QuantLib](https://www.quantlib.org/) C++ (v1.41):
 
 *Benchmarks on Apple M1. See `benchmarks/comparison/` for methodology.*
 
-**Why the difference?** QuantLib builds a reusable object graph (`Handle`, `Quote`, `PricingEngine`) per instrument—powerful for complex multi-leg structures. Nova compiles specialized native code per call via Julia's JIT. The American option benchmark (8x) reflects pure algorithmic performance; European/Greeks benchmarks also capture the object construction difference.
+**Why the difference?** QuantLib builds a reusable object graph (`Handle`, `Quote`, `PricingEngine`) per instrument—powerful for complex multi-leg structures. SuperNova compiles specialized native code per call via Julia's JIT. The American option benchmark (8x) reflects pure algorithmic performance; European/Greeks benchmarks also capture the object construction difference.
 
 ## Features
 
@@ -35,17 +35,17 @@ Nova.jl vs [QuantLib](https://www.quantlib.org/) C++ (v1.41):
 
 ```julia
 using Pkg
-Pkg.add(url="https://github.com/KookiesNKareem/Nova.jl")
+Pkg.add(url="https://github.com/KookiesNKareem/SuperNova.jl")
 ```
 
 ## Quick Start
 
 ### Market State
 
-Nova separates instruments from market data. A `MarketState` holds current prices, rates, and volatilities:
+SuperNova separates instruments from market data. A `MarketState` holds current prices, rates, and volatilities:
 
 ```julia
-using Nova
+using SuperNova
 
 state = MarketState(
     prices = Dict("AAPL" => 150.0, "GOOGL" => 140.0),
@@ -203,7 +203,7 @@ result = calibrate_heston(surface)
 
 ## AD Backends
 
-Nova supports multiple automatic differentiation backends with a unified API:
+SuperNova supports multiple automatic differentiation backends with a unified API:
 
 | Backend | Engine | Best For |
 |---------|--------|----------|
@@ -213,7 +213,7 @@ Nova supports multiple automatic differentiation backends with a unified API:
 | `ReactantBackend()` | Reactant.jl (XLA) | GPU acceleration |
 
 ```julia
-using Nova
+using SuperNova
 
 # Default: ForwardDiff
 gradient(f, x)
@@ -237,18 +237,18 @@ using Reactant  # For ReactantBackend
 
 ### Monte Carlo Greeks with Enzyme
 
-Enzyme can't differentiate through RNGs, so Nova automatically uses Quasi-Monte Carlo (Sobol sequences):
+Enzyme can't differentiate through RNGs, so SuperNova automatically uses Quasi-Monte Carlo (Sobol sequences):
 
 ```julia
 using Enzyme
-using Nova
+using SuperNova
 
 # This works! Uses QMC internally for Enzyme
 delta = mc_delta(S0, T, payoff, dynamics; backend=EnzymeBackend())
 greeks = mc_greeks(S0, T, payoff, dynamics; backend=EnzymeBackend())
 ```
 
-See [full documentation](https://KookiesNKareem.github.io/Nova.jl/dev/backends/) for backend details, limitations, and performance tips.
+See [full documentation](https://KookiesNKareem.github.io/SuperNova.jl/dev/backends/) for backend details, limitations, and performance tips.
 
 ## Type Hierarchy
 
@@ -266,7 +266,7 @@ AbstractInstrument
 
 ## Traits
 
-Nova uses Julia's Holy Traits pattern for capability dispatch:
+SuperNova uses Julia's Holy Traits pattern for capability dispatch:
 
 - `Priceable` - Can compute present value given market state
 - `Differentiable` - Participates in AD

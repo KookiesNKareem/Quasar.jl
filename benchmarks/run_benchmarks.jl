@@ -1,11 +1,11 @@
 #!/usr/bin/env julia
-# Nova Benchmark Suite
+# SuperNova Benchmark Suite
 # Entry point for running accuracy and performance benchmarks
 
 using Pkg
 Pkg.activate(joinpath(@__DIR__, ".."))
 
-# Try to load Reactant for GPU benchmarks (must be before Nova)
+# Try to load Reactant for GPU benchmarks (must be before SuperNova)
 try
     @eval using Reactant
     @info "Reactant loaded for GPU benchmarks"
@@ -13,7 +13,7 @@ catch
     @info "Reactant not available, GPU benchmarks will be skipped"
 end
 
-using Nova
+using SuperNova
 using Printf
 
 # Include benchmark modules

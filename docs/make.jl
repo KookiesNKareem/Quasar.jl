@@ -1,15 +1,15 @@
-using Nova
+using SuperNova
 using Documenter
 using DocumenterVitepress
 
-DocMeta.setdocmeta!(Nova, :DocTestSetup, :(using Nova); recursive=true)
+DocMeta.setdocmeta!(SuperNova, :DocTestSetup, :(using SuperNova); recursive=true)
 
 makedocs(;
-    modules=[Nova],
+    modules=[SuperNova],
     authors="Kareem Fareed",
-    sitename="Nova.jl",
+    sitename="SuperNova.jl",
     format=DocumenterVitepress.MarkdownVitepress(
-        repo="github.com/KookiesNKareem/Nova.jl",
+        repo="github.com/KookiesNKareem/SuperNova.jl",
         devbranch="main",
         devurl="dev",
         build_vitepress=false,  # Don't use JLL Node.js - we'll build manually

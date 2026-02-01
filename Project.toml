@@ -1,4 +1,4 @@
-name = "Nova"
+name = "SuperNova"
 uuid = "1b0303c1-8819-4d1c-a929-91cb710ac874"
 authors = ["Kareem Fareed"]
 version = "0.1.0"
@@ -20,8 +20,8 @@ Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
 Reactant = "3c362404-f566-11ee-1572-e11a4b42c853"
 
 [extensions]
-NovaEnzymeExt = "Enzyme"
-NovaReactantExt = ["Enzyme", "Reactant"]
+SuperNovaEnzymeExt = "Enzyme"
+SuperNovaReactantExt = ["Enzyme", "Reactant"]
 
 [compat]
 DiffResults = "1"

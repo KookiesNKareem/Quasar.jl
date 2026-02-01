@@ -1,5 +1,5 @@
 using Test
-using Nova
+using SuperNova
 
 @testset "Instruments" begin
     @testset "Stock" begin

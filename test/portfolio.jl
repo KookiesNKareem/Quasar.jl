@@ -1,5 +1,5 @@
 using Test
-using Nova
+using SuperNova
 
 @testset "Portfolio" begin
     @testset "Construction" begin

@@ -1,30 +1,30 @@
 using Test
 using Enzyme
 using Reactant
-using Nova
+using SuperNova
 
 @testset "Backend Parity" begin
     f(x) = sum(x.^2) + prod(x)
     x = [1.0, 2.0, 3.0]
 
     # Reference: ForwardDiff
-    fd_grad = Nova.gradient(f, x; backend=ForwardDiffBackend())
-    fd_val, fd_grad2 = Nova.value_and_gradient(f, x; backend=ForwardDiffBackend())
+    fd_grad = SuperNova.gradient(f, x; backend=ForwardDiffBackend())
+    fd_val, fd_grad2 = SuperNova.value_and_gradient(f, x; backend=ForwardDiffBackend())
 
     @testset "PureJulia matches ForwardDiff" begin
-        pj_grad = Nova.gradient(f, x; backend=PureJuliaBackend())
+        pj_grad = SuperNova.gradient(f, x; backend=PureJuliaBackend())
         @test pj_grad ≈ fd_grad atol=1e-6
 
-        pj_val, pj_grad2 = Nova.value_and_gradient(f, x; backend=PureJuliaBackend())
+        pj_val, pj_grad2 = SuperNova.value_and_gradient(f, x; backend=PureJuliaBackend())
         @test pj_val ≈ fd_val
         @test pj_grad2 ≈ fd_grad2 atol=1e-6
     end
 
     @testset "Enzyme matches ForwardDiff" begin
-        enz_grad = Nova.gradient(f, x; backend=EnzymeBackend())
+        enz_grad = SuperNova.gradient(f, x; backend=EnzymeBackend())
         @test enz_grad ≈ fd_grad atol=1e-10
 
-        enz_val, enz_grad2 = Nova.value_and_gradient(f, x; backend=EnzymeBackend())
+        enz_val, enz_grad2 = SuperNova.value_and_gradient(f, x; backend=EnzymeBackend())
         @test enz_val ≈ fd_val
         @test enz_grad2 ≈ fd_grad2 atol=1e-10
     end
@@ -32,24 +32,24 @@ using Nova
     @testset "Hessian Parity" begin
         h(x) = sum(x.^2) + x[1]*x[2]*x[3]  # Has off-diagonal terms
 
-        fd_hess = Nova.hessian(h, x; backend=ForwardDiffBackend())
+        fd_hess = SuperNova.hessian(h, x; backend=ForwardDiffBackend())
 
-        pj_hess = Nova.hessian(h, x; backend=PureJuliaBackend())
+        pj_hess = SuperNova.hessian(h, x; backend=PureJuliaBackend())
         @test pj_hess ≈ fd_hess atol=1e-4  # Finite diff less precise
 
-        enz_hess = Nova.hessian(h, x; backend=EnzymeBackend())
+        enz_hess = SuperNova.hessian(h, x; backend=EnzymeBackend())
         @test enz_hess ≈ fd_hess atol=1e-10
     end
 
     @testset "Jacobian Parity" begin
         g(x) = [x[1]^2 + x[2], x[2]*x[3], x[1] + x[2] + x[3]]
 
-        fd_jac = Nova.jacobian(g, x; backend=ForwardDiffBackend())
+        fd_jac = SuperNova.jacobian(g, x; backend=ForwardDiffBackend())
 
-        pj_jac = Nova.jacobian(g, x; backend=PureJuliaBackend())
+        pj_jac = SuperNova.jacobian(g, x; backend=PureJuliaBackend())
         @test pj_jac ≈ fd_jac atol=1e-6
 
-        enz_jac = Nova.jacobian(g, x; backend=EnzymeBackend())
+        enz_jac = SuperNova.jacobian(g, x; backend=EnzymeBackend())
         @test enz_jac ≈ fd_jac atol=1e-10
     end
 
@@ -57,25 +57,25 @@ using Nova
         # Use simpler function - Reactant doesn't support prod() reduction in reverse mode
         f_simple(x) = sum(x.^2) + sum(x)
 
-        fd_grad_simple = Nova.gradient(f_simple, x; backend=ForwardDiffBackend())
-        react_grad = Nova.gradient(f_simple, x; backend=ReactantBackend())
+        fd_grad_simple = SuperNova.gradient(f_simple, x; backend=ForwardDiffBackend())
+        react_grad = SuperNova.gradient(f_simple, x; backend=ReactantBackend())
         @test react_grad ≈ fd_grad_simple atol=1e-10
 
-        fd_val_simple, fd_grad2_simple = Nova.value_and_gradient(f_simple, x; backend=ForwardDiffBackend())
-        react_val, react_grad2 = Nova.value_and_gradient(f_simple, x; backend=ReactantBackend())
+        fd_val_simple, fd_grad2_simple = SuperNova.value_and_gradient(f_simple, x; backend=ForwardDiffBackend())
+        react_val, react_grad2 = SuperNova.value_and_gradient(f_simple, x; backend=ReactantBackend())
         @test react_val ≈ fd_val_simple
         @test react_grad2 ≈ fd_grad2_simple atol=1e-10
 
         # Hessian (uses Enzyme directly, so prod is fine)
         h(x) = sum(x.^2) + x[1]*x[2]*x[3]
-        fd_hess = Nova.hessian(h, x; backend=ForwardDiffBackend())
-        react_hess = Nova.hessian(h, x; backend=ReactantBackend())
+        fd_hess = SuperNova.hessian(h, x; backend=ForwardDiffBackend())
+        react_hess = SuperNova.hessian(h, x; backend=ReactantBackend())
         @test react_hess ≈ fd_hess atol=1e-10
 
         # Jacobian (uses Enzyme directly)
         g(x) = [x[1]^2 + x[2], x[2]*x[3], x[1] + x[2] + x[3]]
-        fd_jac = Nova.jacobian(g, x; backend=ForwardDiffBackend())
-        react_jac = Nova.jacobian(g, x; backend=ReactantBackend())
+        fd_jac = SuperNova.jacobian(g, x; backend=ForwardDiffBackend())
+        react_jac = SuperNova.jacobian(g, x; backend=ReactantBackend())
         @test react_jac ≈ fd_jac atol=1e-10
     end
 end
