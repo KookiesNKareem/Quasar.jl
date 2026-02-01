@@ -33,6 +33,7 @@ using QuantNova
     include("backend_parity.jl")
     include("interest_rates.jl")
     include("simulation.jl")
+    include("transaction_costs.jl")
     include("backtesting.jl")
     include("scenario_analysis.jl")
     include("research_toolkit.jl")

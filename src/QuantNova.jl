@@ -127,6 +127,18 @@ export execute
 export MarketSnapshot, AbstractDriver, HistoricalDriver
 export SimulationResult, simulate
 
+# Transaction costs
+include("TransactionCosts.jl")
+using .TransactionCosts
+export AbstractCostModel, compute_cost
+export FixedCostModel, ProportionalCostModel, TieredCostModel
+export SpreadCostModel, AlmgrenChrissModel, CompositeCostModel
+export TradeCostBreakdown, CostTracker, record_trade!, cost_summary
+export compute_turnover
+export CostAwareExecutionModel, execute_with_costs
+export RETAIL_COSTS, INSTITUTIONAL_COSTS, HFT_COSTS, create_cost_model
+export compute_net_returns, estimate_break_even_sharpe
+
 # Backtesting
 include("Backtesting.jl")
 using .Backtesting

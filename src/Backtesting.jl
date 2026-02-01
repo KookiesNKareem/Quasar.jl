@@ -5,10 +5,10 @@ using Statistics: mean, std
 using ..Simulation: SimulationState, Order, Fill, portfolio_value
 using ..Simulation: AbstractDriver, HistoricalDriver, MarketSnapshot
 using ..Simulation: AbstractExecutionModel, InstantFill, execute
+using ..TransactionCosts: AbstractCostModel, compute_cost, CostTracker
+using ..TransactionCosts: record_trade!, cost_summary, TradeCostBreakdown, compute_turnover
 
-# ============================================================================
 # Strategy Interface
-# ============================================================================
 
 abstract type AbstractStrategy end
 
@@ -26,9 +26,7 @@ Check if strategy should rebalance at current state.
 """
 should_rebalance(::AbstractStrategy, ::SimulationState) = false
 
-# ============================================================================
 # Buy and Hold Strategy
-# ============================================================================
 
 """
     BuyAndHoldStrategy <: AbstractStrategy
@@ -81,9 +79,7 @@ function generate_orders(strategy::BuyAndHoldStrategy, state::SimulationState)
     return orders
 end
 
-# ============================================================================
 # Rebalancing Strategy
-# ============================================================================
 
 """
     RebalancingStrategy <: AbstractStrategy
@@ -180,9 +176,7 @@ function generate_orders(strategy::RebalancingStrategy, state::SimulationState)
     return orders
 end
 
-# ============================================================================
 # Strategy Context (Price History for Custom Strategies)
-# ============================================================================
 
 """
     StrategyContext
@@ -254,9 +248,7 @@ function get_prices(ctx::StrategyContext, sym::Symbol, lookback::Int)
     return prices[end-n+1:end]
 end
 
-# ============================================================================
 # Signal-Based Strategy (Custom)
-# ============================================================================
 
 """
     SignalStrategy <: AbstractStrategy
@@ -390,9 +382,7 @@ function generate_orders(strategy::SignalStrategy, state::SimulationState)
     return orders
 end
 
-# ============================================================================
 # Momentum Strategy
-# ============================================================================
 
 """
     MomentumStrategy <: AbstractStrategy
@@ -516,9 +506,7 @@ function generate_orders(strategy::MomentumStrategy, state::SimulationState)
     return orders
 end
 
-# ============================================================================
 # Mean Reversion Strategy
-# ============================================================================
 
 """
     MeanReversionStrategy <: AbstractStrategy
@@ -652,9 +640,7 @@ function generate_orders(strategy::MeanReversionStrategy, state::SimulationState
     return orders
 end
 
-# ============================================================================
 # Composite Strategy
-# ============================================================================
 
 """
     CompositeStrategy <: AbstractStrategy
@@ -780,9 +766,7 @@ function generate_orders(strategy::CompositeStrategy, state::SimulationState)
     return orders
 end
 
-# ============================================================================
 # Backtest Result
-# ============================================================================
 
 """
     BacktestResult
@@ -798,11 +782,25 @@ struct BacktestResult
     trades::Vector{Fill}
     positions_history::Vector{Dict{Symbol,Float64}}
     metrics::Dict{Symbol,Float64}
+    # Cost tracking (optional, populated when cost_model provided)
+    gross_returns::Vector{Float64}
+    total_costs::Float64
+    cost_breakdown::Dict{Symbol,Float64}
+
+    # Constructor with cost tracking
+    function BacktestResult(
+        initial_value, final_value, equity_curve, returns, timestamps,
+        trades, positions_history, metrics;
+        gross_returns::Vector{Float64}=Float64[],
+        total_costs::Float64=0.0,
+        cost_breakdown::Dict{Symbol,Float64}=Dict{Symbol,Float64}()
+    )
+        new(initial_value, final_value, equity_curve, returns, timestamps,
+            trades, positions_history, metrics, gross_returns, total_costs, cost_breakdown)
+    end
 end
 
-# ============================================================================
 # Backtest Runner
-# ============================================================================
 
 """
     backtest(strategy, timestamps, price_series; kwargs...)
@@ -815,16 +813,42 @@ Run a full backtest simulation.
 - `price_series::Dict{Symbol,Vector{Float64}}` - Price data per asset
 - `initial_cash::Float64=100_000.0` - Starting capital
 - `execution_model::AbstractExecutionModel=InstantFill()` - How orders execute
+- `cost_model::Union{Nothing,AbstractCostModel}=nothing` - Transaction cost model
+- `adv::Dict{Symbol,Float64}=Dict()` - Average daily volume by symbol (for market impact)
 
 # Returns
 `BacktestResult` with equity curve, trades, and performance metrics.
+
+# Example with transaction costs
+```julia
+using QuantNova
+
+# Create cost model
+costs = CompositeCostModel([
+    ProportionalCostModel(rate_bps=1.0),
+    SpreadCostModel(half_spread_bps=5.0)
+])
+
+# Run backtest with costs
+result = backtest(strategy, timestamps, prices,
+    initial_cash=100_000.0,
+    cost_model=costs
+)
+
+# Check cost impact
+println("Gross return: ", result.metrics[:gross_return])
+println("Net return: ", result.metrics[:total_return])
+println("Total costs: ", result.total_costs)
+```
 """
 function backtest(
     strategy::AbstractStrategy,
     timestamps::Vector{DateTime},
     price_series::Dict{Symbol,Vector{Float64}};
     initial_cash::Float64=100_000.0,
-    execution_model::AbstractExecutionModel=InstantFill()
+    execution_model::AbstractExecutionModel=InstantFill(),
+    cost_model::Union{Nothing,AbstractCostModel}=nothing,
+    adv::Dict{Symbol,Float64}=Dict{Symbol,Float64}()
 )
     n = length(timestamps)
 
@@ -833,11 +857,20 @@ function backtest(
     cash = initial_cash
 
     equity_curve = Float64[]
+    gross_equity_curve = Float64[]  # Before costs
     returns_vec = Float64[]
+    gross_returns_vec = Float64[]
     positions_history = Dict{Symbol,Float64}[]
     all_trades = Fill[]
 
+    # Cost tracking
+    cost_tracker = CostTracker()
+    period_costs = Float64[]
+
     prev_value = initial_cash
+    prev_gross_value = initial_cash
+
+    cumulative_costs = 0.0
 
     for i in 1:n
         # Get current prices
@@ -856,17 +889,41 @@ function backtest(
 
         # Generate and execute orders
         orders = generate_orders(strategy, state)
+        period_cost = 0.0
+
         for order in orders
             fill = execute(execution_model, order, prices; timestamp=timestamps[i])
             push!(all_trades, fill)
 
-            # Update positions and cash
+            # Compute transaction costs if model provided
+            if cost_model !== nothing
+                order_value = abs(fill.quantity) * fill.price
+                volume = get(adv, order.symbol, 1e6)  # Default 1M shares
+                trade_cost = compute_cost(cost_model, order_value, fill.price, volume)
+
+                # Record in tracker
+                breakdown = TradeCostBreakdown(
+                    order.symbol, order_value,
+                    trade_cost, 0.0, 0.0,  # Simplified breakdown
+                    trade_cost, (trade_cost / order_value) * 10000
+                )
+                record_trade!(cost_tracker, breakdown)
+                period_cost += trade_cost
+            end
+
+            # Update positions and cash (trade cost only, not period_cost yet)
             sym = fill.symbol
             positions[sym] = get(positions, sym, 0.0) + fill.quantity
-            cash -= fill.quantity > 0 ? fill.cost : -fill.cost
+            trade_cash = fill.quantity > 0 ? fill.cost : -fill.cost
+            cash -= trade_cash
         end
 
-        # Record equity
+        # Deduct period costs from cash (once per period, after all orders)
+        cash -= period_cost
+        cumulative_costs += period_cost
+        push!(period_costs, period_cost)
+
+        # Record equity (net of costs)
         current_value = cash
         for (sym, qty) in positions
             current_value += qty * prices[sym]
@@ -874,16 +931,65 @@ function backtest(
         push!(equity_curve, current_value)
         push!(positions_history, copy(positions))
 
-        # Compute return
+        # Gross value (what it would be without any costs)
+        gross_value = current_value + cumulative_costs
+        push!(gross_equity_curve, gross_value)
+
+        # Compute returns
         if i > 1
             ret = (current_value - prev_value) / prev_value
             push!(returns_vec, ret)
+
+            gross_ret = (gross_value - prev_gross_value) / prev_gross_value
+            push!(gross_returns_vec, gross_ret)
         end
         prev_value = current_value
+        prev_gross_value = gross_value
     end
 
-    # Compute metrics
+    # Compute metrics (net returns)
     metrics = compute_backtest_metrics(equity_curve, returns_vec)
+
+    # Add cost-related metrics
+    if cost_model !== nothing
+        cost_stats = cost_summary(cost_tracker)
+        metrics[:total_costs] = cost_stats[:total_costs]
+        metrics[:avg_cost_bps] = cost_stats[:avg_cost_bps]
+        metrics[:n_trades] = cost_stats[:n_trades]
+        metrics[:total_traded] = cost_stats[:total_traded]
+
+        # Gross metrics for comparison - both based on initial_cash for fair comparison
+        if !isempty(gross_returns_vec)
+            # Gross return: final gross value vs initial capital
+            final_gross = gross_equity_curve[end]
+            metrics[:gross_return] = (final_gross - initial_cash) / initial_cash
+
+            # Net return: final net value vs initial capital
+            metrics[:total_return] = (equity_curve[end] - initial_cash) / initial_cash
+
+            # Update annualized return based on correct total return
+            n_periods = length(returns_vec)
+            if n_periods > 0
+                metrics[:annualized_return] = (1 + metrics[:total_return])^(252 / n_periods) - 1
+            end
+
+            # Gross Sharpe (use gross returns for volatility)
+            gross_vol = std(gross_returns_vec) * sqrt(252)
+            gross_ann_ret = (1 + metrics[:gross_return])^(252 / n_periods) - 1
+            metrics[:gross_sharpe] = gross_vol > 0 ? gross_ann_ret / gross_vol : 0.0
+
+            # Cost drag = gross return - net return (should be positive)
+            metrics[:cost_drag] = metrics[:gross_return] - metrics[:total_return]
+        end
+
+        # Turnover
+        turnover = compute_turnover(positions_history, [
+            Dict(sym => price_series[sym][i] for sym in keys(price_series))
+            for i in 1:n
+        ])
+        metrics[:turnover] = turnover
+        metrics[:annualized_turnover] = turnover * 252 / n
+    end
 
     BacktestResult(
         initial_cash,
@@ -893,7 +999,10 @@ function backtest(
         timestamps,
         all_trades,
         positions_history,
-        metrics
+        metrics;
+        gross_returns=gross_returns_vec,
+        total_costs=cost_model !== nothing ? cost_summary(cost_tracker)[:total_costs] : 0.0,
+        cost_breakdown=cost_model !== nothing ? cost_tracker.costs_by_symbol : Dict{Symbol,Float64}()
     )
 end
 
@@ -957,9 +1066,7 @@ function compute_backtest_metrics(equity_curve::Vector{Float64}, returns::Vector
     return metrics
 end
 
-# ============================================================================
 # Volatility Targeting Strategy
-# ============================================================================
 
 """
     VolatilityTargetStrategy <: AbstractStrategy
@@ -1108,9 +1215,7 @@ function generate_orders(strategy::VolatilityTargetStrategy, state::SimulationSt
     return scaled_orders
 end
 
-# ============================================================================
 # Walk-Forward Backtesting
-# ============================================================================
 
 """
     WalkForwardConfig
@@ -1339,9 +1444,7 @@ function walk_forward_backtest(
     )
 end
 
-# ============================================================================
 # Additional Metrics
-# ============================================================================
 
 """
     compute_extended_metrics(returns; rf=0.0, benchmark_returns=nothing)
@@ -1419,9 +1522,7 @@ function compute_extended_metrics(
     return metrics
 end
 
-# ============================================================================
 # Exports
-# ============================================================================
 
 export AbstractStrategy, generate_orders, should_rebalance
 export BuyAndHoldStrategy, RebalancingStrategy
