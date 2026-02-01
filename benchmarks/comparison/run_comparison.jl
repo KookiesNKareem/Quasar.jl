@@ -16,12 +16,12 @@ using Statistics
 const QUANTLIB_DIR = expanduser("~/dev/QuantLib")
 const BENCHMARK_DIR = @__DIR__
 
-# Expected QuantLib C++ timings (μs) - update these when QuantLib version changes
-# These are baseline values from QuantLib 1.41 on Apple M1
+# Fallback QuantLib C++ timings (μs) if parsing fails
+# Measured on Apple M1, QuantLib 1.41
 const QUANTLIB_BASELINE = (
-    european = 5.5,
-    greeks = 5.6,
-    american = 67.0
+    european = 5.71,
+    greeks = 5.71,
+    american = 66.96
 )
 
 function compile_cpp_benchmark()
