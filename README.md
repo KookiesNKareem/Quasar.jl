@@ -4,6 +4,9 @@
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://KookiesNKareem.github.io/Quasar.jl/dev/)
 [![Build Status](https://github.com/KookiesNKareem/Quasar.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/KookiesNKareem/Quasar.jl/actions/workflows/CI.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/KookiesNKareem/Quasar.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/KookiesNKareem/Quasar.jl)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Julia](https://img.shields.io/badge/Julia-1.11+-9558B2.svg?logo=julia)](https://julialang.org/)
+[![Code Style: Blue](https://img.shields.io/badge/code%20style-blue-4495d1.svg)](https://github.com/invenia/BlueStyle)
 
 A differentiable quantitative finance library for Julia.
 
