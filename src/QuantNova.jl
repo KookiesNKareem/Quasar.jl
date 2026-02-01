@@ -187,4 +187,11 @@ export StyleAnalysisResult, style_analysis
 export tracking_error, information_ratio
 export up_capture_ratio, down_capture_ratio, capture_ratio
 
+# Visualization
+include("Visualization.jl")
+using .Visualization
+export AbstractVisualization, VisualizationSpec
+export visualize, set_theme!, get_theme, available_views
+export LIGHT_THEME, DARK_THEME, COLORS
+
 end

@@ -43,4 +43,6 @@ using QuantNova
     # Live data tests (requires network, skipped by default)
     # Run with: QUANTNOVA_TEST_LIVE_DATA=1 julia --project=. -e 'using Pkg; Pkg.test()'
     include("live_data.jl")
+
+    include("visualization.jl")
 end
