@@ -361,6 +361,89 @@ function main()
     println("-" ^ 50)
 
     # -------------------------------------------------------------------------
+    # Step 10: Visualization
+    # -------------------------------------------------------------------------
+    print_header("Step 10: Visualization")
+
+    # Create visualization specs for all strategies
+    println("Creating visualization specs...")
+
+    viz_specs = Dict{String, Any}()
+    for (name, result) in results
+        viz_specs[name] = (
+            equity = visualize(result, :equity; title="$name - Equity"),
+            drawdown = visualize(result, :drawdown; title="$name - Drawdown"),
+            returns = visualize(result, :returns; title="$name - Returns"),
+        )
+    end
+
+    # Create comparison dashboard
+    best_result = results["Max Sharpe"]
+    mv_result_bt = results["Minimum Variance"]
+
+    comparison_dashboard = Dashboard(
+        title = "Portfolio Strategy Comparison",
+        theme = :dark,
+        layout = [
+            Row(
+                visualize(best_result, :equity; title="Max Sharpe Equity"),
+                visualize(mv_result_bt, :equity; title="Min Variance Equity"),
+            ),
+            Row(
+                visualize(best_result, :drawdown; title="Max Sharpe Drawdown"),
+                visualize(mv_result_bt, :drawdown; title="Min Variance Drawdown"),
+            ),
+        ]
+    )
+
+    # Walk-forward dashboard
+    wf_dashboard = Dashboard(
+        title = "Walk-Forward Analysis",
+        theme = :dark,
+        layout = [
+            Row(visualize(wf_result, :equity; title="Walk-Forward Equity"), weight=2),
+            Row(
+                visualize(wf_result, :drawdown; title="Walk-Forward Drawdown"),
+                visualize(wf_result, :returns; title="Walk-Forward Returns"),
+            ),
+        ]
+    )
+
+    println("  ✓ Created specs for $(length(results)) strategies")
+    println("  ✓ Created comparison dashboard")
+    println("  ✓ Created walk-forward dashboard")
+    println()
+
+    # Check if Makie is available
+    local makie_loaded = false
+    try
+        if isdefined(Main, :CairoMakie) || isdefined(Main, :GLMakie) || isdefined(Main, :WGLMakie)
+            makie_loaded = true
+        end
+    catch
+    end
+
+    if makie_loaded
+        println("  Makie backend detected!")
+        println("  Available visualizations:")
+        println("    render(viz_specs[\"Max Sharpe\"].equity)  # Single equity curve")
+        println("    render(comparison_dashboard)             # Strategy comparison")
+        println("    render(wf_dashboard)                     # Walk-forward analysis")
+        println("    save(\"portfolio_report.png\", viz_specs[\"Max Sharpe\"].equity)")
+    else
+        println("  No Makie backend loaded - specs ready but not rendered")
+        println("  To visualize, load a Makie backend:")
+        println("    using CairoMakie  # For static exports (recommended)")
+        println("    using GLMakie     # For interactive plots")
+        println("    using WGLMakie    # For web/notebooks")
+        println()
+        println("  Then call:")
+        println("    render(viz_specs[\"Max Sharpe\"].equity)")
+        println("    render(comparison_dashboard)")
+        println("    save(\"portfolio_report.pdf\", comparison_dashboard)")
+    end
+
+    # -------------------------------------------------------------------------
     # Summary
     # -------------------------------------------------------------------------
     print_header("Summary")
@@ -382,9 +465,23 @@ function main()
     print_metrics(best)
 
     println()
+    println("Visualization specs available:")
+    println("  viz_specs       - Dict of specs per strategy")
+    println("  comparison_dashboard - Side-by-side strategy comparison")
+    println("  wf_dashboard    - Walk-forward analysis dashboard")
+
+    println()
     println("=" ^ 70)
     println("Example complete! See examples/portfolio_optimization.jl for source code.")
     println("=" ^ 70)
+
+    # Return specs for interactive use
+    return (
+        results = results,
+        viz_specs = viz_specs,
+        comparison_dashboard = comparison_dashboard,
+        wf_dashboard = wf_dashboard,
+    )
 end
 
 # Run if executed directly

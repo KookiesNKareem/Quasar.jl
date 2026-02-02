@@ -4,6 +4,7 @@ using ..Core: ADBackend
 using ..AD: gradient, current_backend, ForwardDiffBackend
 using LinearAlgebra
 using Statistics
+using Random
 
 # ============================================================================
 # Abstract Types
@@ -870,6 +871,282 @@ function solve_projected_gradient(f, x0::Vector{Float64};
         end
 
         x = x_new
+    end
+
+    (x=best_x, objective=best_f, converged=false, iterations=solver.max_iter)
+end
+
+# ============================================================================
+# CMA-ES Solver (Covariance Matrix Adaptation Evolution Strategy)
+# ============================================================================
+
+"""
+    CMAESSolver(; popsize=nothing, sigma=0.3, max_iter=1000, tol=1e-8, seed=nothing)
+
+CMA-ES (Covariance Matrix Adaptation Evolution Strategy) solver for global optimization
+of non-convex problems. State-of-the-art for continuous black-box optimization.
+
+CMA-ES learns the shape of the objective landscape by adapting a covariance matrix,
+making it particularly effective for:
+- Non-convex objectives (Sharpe maximization, Risk Parity)
+- Ill-conditioned problems
+- Multi-modal landscapes
+
+# Arguments
+- `popsize`: Population size (default: 4 + floor(3*log(n)))
+- `sigma`: Initial step size (default: 0.3)
+- `max_iter`: Maximum iterations (default: 1000)
+- `tol`: Convergence tolerance on step size (default: 1e-8)
+- `seed`: Random seed for reproducibility (default: nothing)
+
+# Reference
+Hansen, N. (2016). The CMA Evolution Strategy: A Tutorial.
+"""
+struct CMAESSolver <: AbstractSolver
+    popsize::Union{Int, Nothing}
+    sigma::Float64
+    max_iter::Int
+    tol::Float64
+    seed::Union{Int, Nothing}
+
+    function CMAESSolver(;
+        popsize::Union{Int, Nothing}=nothing,
+        sigma::Float64=0.3,
+        max_iter::Int=1000,
+        tol::Float64=1e-8,
+        seed::Union{Int, Nothing}=nothing
+    )
+        @assert sigma > 0 "Initial step size must be positive"
+        @assert max_iter > 0 "Max iterations must be positive"
+        @assert tol > 0 "Tolerance must be positive"
+        new(popsize, sigma, max_iter, tol, seed)
+    end
+end
+
+"""
+    solve_cmaes(f, x0; constraints=nothing, solver=CMAESSolver())
+
+Solve constrained optimization using CMA-ES.
+
+# Arguments
+- `f`: Objective function to minimize
+- `x0`: Initial point (determines dimensionality)
+- `constraints`: Optional constraints (supports FullInvestment, LongOnly, Box)
+- `solver`: CMAESSolver with parameters
+
+# Returns
+Named tuple with (x, objective, converged, iterations)
+"""
+function solve_cmaes(f, x0::Vector{Float64};
+                     constraints::Union{Vector{<:AbstractConstraint}, Nothing}=nothing,
+                     solver::CMAESSolver=CMAESSolver())
+    n = length(x0)
+
+    # Set random seed if provided
+    if !isnothing(solver.seed)
+        Random.seed!(solver.seed)
+    end
+
+    # Extract constraint parameters
+    lb, ub, target_sum = _extract_bounds(constraints, n)
+    has_sum_constraint = !isnothing(target_sum)
+    ub_finite = _finite_or_nothing(ub)
+
+    # -------------------------------------------------------------------------
+    # CMA-ES Strategy Parameters (from Hansen's tutorial)
+    # -------------------------------------------------------------------------
+
+    # Population size
+    λ = isnothing(solver.popsize) ? 4 + floor(Int, 3 * log(n)) : solver.popsize
+    μ = λ ÷ 2  # Number of parents for recombination
+
+    # Recombination weights (log-linear decrease)
+    weights_raw = [log(μ + 0.5) - log(i) for i in 1:μ]
+    weights = weights_raw / sum(weights_raw)
+    μ_eff = 1.0 / sum(weights.^2)  # Variance effective selection mass
+
+    # Adaptation parameters for covariance matrix
+    cc = (4 + μ_eff/n) / (n + 4 + 2*μ_eff/n)  # Time constant for cumulation
+    cs = (μ_eff + 2) / (n + μ_eff + 5)         # Time constant for step-size control
+    c1 = 2 / ((n + 1.3)^2 + μ_eff)             # Learning rate for rank-1 update
+    cμ = min(1 - c1, 2 * (μ_eff - 2 + 1/μ_eff) / ((n + 2)^2 + μ_eff))  # Learning rate for rank-μ update
+
+    # Damping for step-size adaptation
+    damps = 1 + 2*max(0, sqrt((μ_eff - 1)/(n + 1)) - 1) + cs
+
+    # Expected length of N(0,I) vector
+    chiN = sqrt(n) * (1 - 1/(4*n) + 1/(21*n^2))
+
+    # -------------------------------------------------------------------------
+    # Initialize State
+    # -------------------------------------------------------------------------
+
+    # Mean (initial point, projected to feasible set)
+    m = copy(x0)
+    if has_sum_constraint
+        m = project_simplex(m, target_sum; lower=lb, upper=ub_finite)
+    else
+        m = clamp.(m, lb, ub)
+    end
+
+    # Step size
+    σ = solver.sigma
+
+    # Covariance matrix (start with identity)
+    C = Matrix{Float64}(I, n, n)
+
+    # Evolution paths
+    pc = zeros(n)  # Path for covariance matrix
+    ps = zeros(n)  # Path for step size
+
+    # Eigendecomposition cache (C = B * D^2 * B')
+    B = Matrix{Float64}(I, n, n)  # Eigenvectors
+    D = ones(n)                    # sqrt(eigenvalues)
+
+    # Track best solution
+    best_x = copy(m)
+    best_f = f(m)
+
+    # For convergence detection
+    f_history = Float64[]
+
+    # -------------------------------------------------------------------------
+    # Main Loop
+    # -------------------------------------------------------------------------
+
+    for iter in 1:solver.max_iter
+        # -------------------------------------------------------------------
+        # Sample Population
+        # -------------------------------------------------------------------
+
+        offspring = Vector{Vector{Float64}}(undef, λ)
+
+        for k in 1:λ
+            z = randn(n)
+            y = B * (D .* z)  # y ~ N(0, C)
+            x_raw = m + σ * y
+
+            # Project to feasible set
+            if has_sum_constraint
+                offspring[k] = project_simplex(x_raw, target_sum; lower=lb, upper=ub_finite)
+            else
+                offspring[k] = clamp.(x_raw, lb, ub)
+            end
+        end
+
+        # -------------------------------------------------------------------
+        # Evaluate and Rank
+        # -------------------------------------------------------------------
+
+        fitness = [f(x) for x in offspring]
+        ranking = sortperm(fitness)  # Ascending (minimization)
+
+        # Track best
+        if fitness[ranking[1]] < best_f
+            best_f = fitness[ranking[1]]
+            best_x = copy(offspring[ranking[1]])
+        end
+
+        push!(f_history, fitness[ranking[1]])
+
+        # -------------------------------------------------------------------
+        # Update Mean
+        # -------------------------------------------------------------------
+
+        m_old = copy(m)
+        m = zeros(n)
+        for i in 1:μ
+            m += weights[i] * offspring[ranking[i]]
+        end
+
+        # Ensure mean is feasible
+        if has_sum_constraint
+            m = project_simplex(m, target_sum; lower=lb, upper=ub_finite)
+        else
+            m = clamp.(m, lb, ub)
+        end
+
+        # -------------------------------------------------------------------
+        # Update Evolution Paths
+        # -------------------------------------------------------------------
+
+        y_mean = (m - m_old) / σ
+
+        # C^{-1/2} * y_mean for ps update
+        C_invsqrt_y = B * (D.^(-1) .* (B' * y_mean))
+
+        # Update ps (conjugate evolution path for step-size)
+        ps = (1 - cs) * ps + sqrt(cs * (2 - cs) * μ_eff) * C_invsqrt_y
+
+        # Heaviside function for stalling detection
+        hsig = norm(ps) / sqrt(1 - (1 - cs)^(2 * iter)) / chiN < 1.4 + 2/(n + 1)
+        hsig_val = hsig ? 1.0 : 0.0
+
+        # Update pc (evolution path for covariance)
+        pc = (1 - cc) * pc + hsig_val * sqrt(cc * (2 - cc) * μ_eff) * y_mean
+
+        # -------------------------------------------------------------------
+        # Update Covariance Matrix
+        # -------------------------------------------------------------------
+
+        rank1_update = pc * pc'
+
+        rankμ_update = zeros(n, n)
+        for i in 1:μ
+            y_i = (offspring[ranking[i]] - m_old) / σ
+            rankμ_update += weights[i] * (y_i * y_i')
+        end
+
+        old_cov_factor = (1 - hsig_val) * cc * (2 - cc)
+
+        C = (1 - c1 - cμ + old_cov_factor * c1) * C + c1 * rank1_update + cμ * rankμ_update
+        C = (C + C') / 2  # Enforce symmetry
+
+        # -------------------------------------------------------------------
+        # Update Step Size
+        # -------------------------------------------------------------------
+
+        σ = σ * exp((cs / damps) * (norm(ps) / chiN - 1))
+        σ = clamp(σ, 1e-20, 1e10)
+
+        # -------------------------------------------------------------------
+        # Eigendecomposition of C
+        # -------------------------------------------------------------------
+
+        min_eig = minimum(eigvals(Symmetric(C)))
+        if min_eig < 1e-10
+            C = C + (1e-10 - min_eig) * I
+        end
+
+        eigen_result = eigen(Symmetric(C))
+        D = sqrt.(max.(eigen_result.values, 1e-20))
+        B = eigen_result.vectors
+
+        # -------------------------------------------------------------------
+        # Check Convergence
+        # -------------------------------------------------------------------
+
+        if σ * maximum(D) < solver.tol
+            return (x=best_x, objective=best_f, converged=true, iterations=iter)
+        end
+
+        if length(f_history) > 20
+            recent = f_history[end-19:end]
+            if (maximum(recent) - minimum(recent)) < solver.tol * abs(best_f + 1e-10)
+                return (x=best_x, objective=best_f, converged=true, iterations=iter)
+            end
+        end
+
+        # Reset on condition number explosion
+        cond_C = maximum(D) / minimum(D)
+        if cond_C > 1e14
+            C = Matrix{Float64}(I, n, n)
+            B = Matrix{Float64}(I, n, n)
+            D = ones(n)
+            pc = zeros(n)
+            ps = zeros(n)
+            σ = solver.sigma
+        end
     end
 
     (x=best_x, objective=best_f, converged=false, iterations=solver.max_iter)
@@ -2605,9 +2882,9 @@ export GroupConstraint, TurnoverConstraint, CardinalityConstraint
 export standard_constraints, check_constraint_violation, check_all_constraints
 
 # Solver types
-export QPSolver, LBFGSSolver, ProjectedGradientSolver
+export QPSolver, LBFGSSolver, ProjectedGradientSolver, CMAESSolver
 export project_simplex, project_constraints, solve_qp, solve_min_variance_qp
-export solve_lbfgs, solve_projected_gradient
+export solve_lbfgs, solve_projected_gradient, solve_cmaes
 
 # Objective types (existing)
 export MeanVariance, SharpeMaximizer, CVaRObjective, KellyCriterion, OptimizationResult

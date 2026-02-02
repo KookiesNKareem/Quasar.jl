@@ -321,6 +321,87 @@ break_even = annual_cost_drag / strat_vol
 println()
 @printf("  Break-even Sharpe (institutional costs): %.2f\n", break_even)
 
+# =============================================================================
+# 7. VISUALIZATION (Optional - requires Makie backend)
+# =============================================================================
+
+println("[7/7] Preparing visualizations...")
+
+# Create BacktestResult for visualization
+# First, create proper timestamps
+strategy_timestamps = [DateTime(2022, 1, 1) + Day(i) for i in valid_start:n_days]
+
+# Compute equity curve from strategy returns
+strategy_equity = zeros(n_valid)
+strategy_equity[1] = 10000.0
+for i in 2:n_valid
+    strategy_equity[i] = strategy_equity[i-1] * (1 + strategy_returns[i])
+end
+
+# Create BacktestResult
+strategy_result = BacktestResult(
+    10000.0,
+    strategy_equity[end],
+    strategy_equity,
+    strategy_returns[2:end],
+    strategy_timestamps,
+    Fill[],
+    [Dict{Symbol,Float64}() for _ in 1:n_valid],
+    Dict{Symbol,Float64}(
+        :sharpe_ratio => strat_sharpe,
+        :max_drawdown => strat_maxdd / 100,
+        :annualized_return => strat_total / 100 / (n_valid / 252),
+        :volatility => strat_vol,
+        :total_return => strat_total / 100
+    )
+)
+
+# Create visualization specs (lazy - doesn't render until displayed)
+println("  Creating visualization specs...")
+equity_spec = visualize(strategy_result, :equity; title="Momentum Strategy Equity")
+drawdown_spec = visualize(strategy_result, :drawdown; title="Momentum Strategy Drawdown")
+returns_spec = visualize(strategy_result, :returns; title="Daily Returns Distribution")
+dashboard_spec = Dashboard(
+    title = "Factor Strategy Dashboard",
+    theme = :dark,
+    layout = [
+        Row(equity_spec, weight=2),
+        Row(drawdown_spec, returns_spec),
+    ]
+)
+
+println("  ✓ Specs created: equity, drawdown, returns, dashboard")
+println()
+
+# Check if Makie is available
+local makie_loaded = false
+try
+    # Check if any Makie backend is loaded
+    if isdefined(Main, :CairoMakie) || isdefined(Main, :GLMakie) || isdefined(Main, :WGLMakie)
+        makie_loaded = true
+    end
+catch
+end
+
+if makie_loaded
+    println("  Makie backend detected - rendering visualizations...")
+    # render() and save() are available when Makie is loaded
+    println("  → Use `render(equity_spec)` to display equity curve")
+    println("  → Use `render(dashboard_spec)` for full dashboard")
+    println("  → Use `save(\"report.png\", equity_spec)` to export")
+else
+    println("  No Makie backend loaded - skipping rendering")
+    println("  To visualize, load a Makie backend first:")
+    println("    using CairoMakie  # For static images (PNG, PDF, SVG)")
+    println("    using GLMakie     # For interactive desktop plots")
+    println("    using WGLMakie    # For web/notebook plots")
+    println()
+    println("  Then re-run or call:")
+    println("    render(equity_spec)        # Display equity curve")
+    println("    render(dashboard_spec)     # Full dashboard")
+    println("    save(\"report.png\", spec)  # Export to file")
+end
+
 println()
 println("=" ^ 70)
 println("DEMO COMPLETE")
@@ -333,6 +414,7 @@ println("  ✓ Strategy construction and backtesting")
 println("  ✓ Statistical significance testing (Sharpe CI, p-values)")
 println("  ✓ Factor regression (CAPM alpha/beta)")
 println("  ✓ Transaction cost impact analysis")
+println("  ✓ Visualization specs (equity, drawdown, returns, dashboard)")
 println()
 println("All computations use QuantNova's pure Julia implementation.")
 println("No Python, no external dependencies, no waiting.")

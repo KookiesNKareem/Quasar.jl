@@ -47,9 +47,9 @@ export AbstractOptimizationObjective, AbstractConstraint, AbstractSolver, Abstra
 export FullInvestmentConstraint, LongOnlyConstraint, BoxConstraint
 export GroupConstraint, TurnoverConstraint, CardinalityConstraint
 export standard_constraints, check_constraint_violation, check_all_constraints
-export QPSolver, LBFGSSolver, ProjectedGradientSolver
+export QPSolver, LBFGSSolver, ProjectedGradientSolver, CMAESSolver
 export project_simplex, project_constraints, solve_qp, solve_min_variance_qp
-export solve_lbfgs, solve_projected_gradient
+export solve_lbfgs, solve_projected_gradient, solve_cmaes
 export MinimumVariance, RiskParity, MaximumDiversification, BlackLitterman
 export compute_risk_contributions, compute_fractional_risk_contributions
 export compute_marginal_risk, compute_component_risk, compute_beta
