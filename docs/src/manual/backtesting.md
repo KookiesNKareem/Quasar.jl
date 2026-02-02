@@ -113,3 +113,5 @@ fig = render(spec)
 spec = visualize(result, :rolling; title="Rolling Performance", window=63)
 fig = render(spec)
 ```
+
+For a complete walkthrough with all visualization types, see the [Backtesting Demo](../examples/backtesting-demo.md).

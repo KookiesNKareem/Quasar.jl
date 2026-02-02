@@ -162,3 +162,5 @@ spec = visualize(result, :weights;
 )
 fig = render(spec)
 ```
+
+For a complete optimization workflow with visualization, see the [Optimization Demo](../examples/optimization-demo.md).
