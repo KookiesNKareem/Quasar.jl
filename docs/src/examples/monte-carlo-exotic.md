@@ -43,10 +43,10 @@ println("  95% CI: [\$$(round(result.ci_lower, digits=4)), \$$(round(result.ci_u
 **Output:**
 ```
 European Call (K=100):
-  Monte Carlo: $10.4477 ± 0.0329
-  Black-Scholes: $10.4506
+  Monte Carlo: 10.4477 +/- 0.0329
+  Black-Scholes: 10.4506
   Error: 0.0029
-  95% CI: [$10.3832, $10.5122]
+  95% CI: [10.3832, 10.5122]
 ```
 
 ## Asian Options
@@ -81,8 +81,8 @@ println("  (Averaging reduces volatility exposure)")
 **Output:**
 ```
 Asian Options (K=100, daily averaging):
-  Call: $5.7374 ± 0.0246
-  Put:  $3.2851 ± 0.0171
+  Call: 5.7374 +/- 0.0246
+  Put:  3.2851 +/- 0.0171
 
   Asian call is 45.1% cheaper than European
   (Averaging reduces volatility exposure)
@@ -103,9 +103,9 @@ end
 **Output:**
 ```
 Impact of Averaging Frequency:
-  Monthly: $5.6694
-  Weekly: $5.7589
-  Daily: $5.7062
+  Monthly: 5.6694
+  Weekly: 5.7589
+  Daily: 5.7062
 ```
 
 ## Barrier Options
@@ -136,8 +136,8 @@ println("  Knockout discount: $(round((1 - result.price/vanilla.price)*100, digi
 **Output:**
 ```
 Up-and-Out Call (K=100, B=130):
-  Price: $3.5972 ± 0.0289
-  European Call: $10.4506
+  Price: 3.5972 +/- 0.0289
+  European Call: 10.4506
   Knockout discount: 65.6%
 ```
 
@@ -162,7 +162,7 @@ println("  Price: \$$(round(result.price, digits=4))")
 **Output:**
 ```
 Down-and-Out Put (K=100, B=80):
-  Price: $1.7633
+  Price: 1.7633
 ```
 
 ### Barrier Monitoring Frequency
@@ -183,10 +183,10 @@ end
 ```
 Barrier Monitoring Frequency Impact:
 (More monitoring = more chances to hit barrier = lower price)
-  12 steps/year: $1.8603
-  52 steps/year: $1.4968
-  252 steps/year: $1.3657
-  504 steps/year: $1.3002
+  12 steps/year: 1.8603
+  52 steps/year: 1.4968
+  252 steps/year: 1.3657
+  504 steps/year: 1.3002
 ```
 
 ## American Options (Longstaff-Schwartz)
@@ -215,9 +215,9 @@ println("  Early Exercise Premium: \$$(round(premium, digits=4)) ($(round(premiu
 **Output:**
 ```
 American Put (K=100):
-  Price: $6.0647
-  European Put: $5.5873
-  Early Exercise Premium: $0.4774 (8.5%)
+  Price: 6.0647
+  European Put: 5.5873
+  Early Exercise Premium: 0.4774 (8.5%)
 ```
 
 ### American vs European by Moneyness

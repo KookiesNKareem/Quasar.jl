@@ -249,7 +249,7 @@ println("  Yield: $(round(-log(pv/100)/5 * 100, digits=3))%")
 **Output:**
 ```
 5Y Zero-Coupon Bond:
-  Price: $75.2048
+  Price: 75.2048
   Yield: 5.699%
 ```
 
@@ -276,8 +276,8 @@ println("  YTM: $(round(ytm * 100, digits=3))%")
 **Output:**
 ```
 5Y 6% Coupon Bond:
-  Price at 5.5% yield: $101.8267
-  Price using market curve: $101.2455
+  Price at 5.5% yield: 101.8267
+  Price using market curve: 101.2455
   YTM: 5.673%
 ```
 
@@ -304,7 +304,7 @@ Bond Analytics at 5.5% yield:
   Macaulay Duration: 4.400 years
   Modified Duration: 4.170
   Convexity: 20.937
-  DV01: $0.0425 per bp
+  DV01: 0.0425 per bp
 ```
 
 ```julia
@@ -373,9 +373,9 @@ println("  Price: \$$(round(floor_price * 10000, digits=2)) per \$10,000 notiona
 **Output:**
 ```
 5Y Cap at 5%:
-  Price: $250.68 per $10,000 notional
+  Price: 250.68 per 10,000 notional
 5Y Floor at 4%:
-  Price: $74.4 per $10,000 notional
+  Price: 74.4 per 10,000 notional
 ```
 
 ### Swaptions
@@ -398,8 +398,8 @@ println("  Receiver: \$$(round(receiver_price * 10000, digits=2)) per \$10,000")
 **Output:**
 ```
 1Y x 5Y Swaptions at 5%:
-  Payer: $138.54 per $10,000
-  Receiver: $112.35 per $10,000
+  Payer: 138.54 per 10,000
+  Receiver: 112.35 per 10,000
 ```
 
 ## Short-Rate Models

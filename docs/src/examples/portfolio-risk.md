@@ -55,13 +55,13 @@ end
 
 **Output:**
 ```
-Portfolio Value: $506.33
+Portfolio Value: 506.33
 
 Position Breakdown:
-  1. AAPL 155 call: 10 × $9.60 = $96.00
-  2. AAPL 145 put: -5 × $4.94 = $-24.70
-  3. GOOGL 145 call: 20 × $11.28 = $225.60
-  4. MSFT 390 call: 15 × $13.96 = $209.43
+  1. AAPL 155 call: 10 × 9.60 = 96.00
+  2. AAPL 145 put: -5 × 4.94 = -24.70
+  3. GOOGL 145 call: 20 × 11.28 = 225.60
+  4. MSFT 390 call: 15 × 13.96 = 209.43
 ```
 
 ## Aggregate Greeks
@@ -187,9 +187,9 @@ println("  95% CVaR: \$$(round(cvar_95, digits=2))")
 **Output:**
 ```
 Risk Metrics (1-day, simulated):
-  95% VaR:  $101.80
-  99% VaR:  $138.29
-  95% CVaR: $124.69
+  95% VaR:  101.80
+  99% VaR:  138.29
+  95% CVaR: 124.69
 ```
 
 ### Greeks-Based VaR
@@ -231,7 +231,7 @@ println("\nDelta-Gamma VaR (95%): \$$(round(dg_var, digits=2))")
 
 **Output:**
 ```
-Delta-Gamma VaR (95%): $114.54
+Delta-Gamma VaR (95%): 114.54
 ```
 
 ## Stress Testing
@@ -269,10 +269,10 @@ end
 ```
 Stress Test Results:
 ------------------------------------------------------------
-Market Crash (-10%)  | P&L: $   -183.48 | -36.2%
-Tech Rally (+5%)     | P&L: $    239.02 | 47.2%
-Vol Spike            | P&L: $    271.06 | 53.5%
-Rate Hike            | P&L: $    -98.27 | -19.4%
+Market Crash (-10%)  | P&L: -183.48 | -36.2%
+Tech Rally (+5%)     | P&L: 239.02  | 47.2%
+Vol Spike            | P&L: 271.06  | 53.5%
+Rate Hike            | P&L: -98.27  | -19.4%
 ```
 
 ## Hedging Strategies
@@ -300,9 +300,9 @@ end
 **Output:**
 ```
 Delta Hedge Required:
-  GOOGL: -1047 shares ($146530)
-  MSFT: -710 shares ($269661)
-  AAPL: -686 shares ($102901)
+  GOOGL: -1047 shares (146530)
+  MSFT: -710 shares (269661)
+  AAPL: -686 shares (102901)
 ```
 
 ### Vega Hedging
@@ -382,11 +382,11 @@ println("  Unexplained: \$$(round(attr.unexplained, digits=2))")
 **Output:**
 ```
 P&L Attribution:
-  Total P&L:   $123.33
-  Delta:       $73.27
-  Gamma:       $2.22
-  Vega:        $43.04
-  Unexplained: $4.8
+  Total P&L:   123.33
+  Delta:       73.27
+  Gamma:       2.22
+  Vega:        43.04
+  Unexplained: 4.8
 ```
 
 ## Next Steps

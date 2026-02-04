@@ -39,8 +39,8 @@ println("Put-call parity check: $(round(parity_lhs, digits=6)) ≈ $(round(parit
 
 **Output:**
 ```
-Call price: $7.9152
-Put price: $9.0882
+Call price: 7.9152
+Put price: 9.0882
 Put-call parity check: -1.173036 ≈ -1.173036
 ```
 
@@ -68,8 +68,8 @@ println("Put: \$$(round(price(put, state), digits=4))")
 
 **Output:**
 ```
-Call: $7.9152
-Put: $9.0882
+Call: 7.9152
+Put: 9.0882
 ```
 
 ## Computing Greeks
@@ -131,7 +131,7 @@ shares_to_short = -delta_exposure
 println("Portfolio value: \$$(round(option_value, digits=2))")
 println("Shares to short for delta hedge: $(round(shares_to_short, digits=1))")
 
-# Verify hedge - if stock moves up $1
+# Verify hedge - if stock moves up 1
 S_new = 151.0
 state_new = MarketState(
     prices = Dict("AAPL" => S_new),
@@ -153,13 +153,13 @@ println("Net P&L (should be ≈0): \$$(round(total_pnl, digits=2))")
 
 **Output:**
 ```
-Portfolio value: $791.52
+Portfolio value: 791.52
 Shares to short for delta hedge: -50.6
 
-For $1 spot move:
-Option P&L: $51.56
-Stock hedge P&L: $-50.62
-Net P&L (should be ≈0): $0.94
+For 1 spot move:
+Option P&L: 51.56
+Stock hedge P&L: -50.62
+Net P&L (should be ≈0): 0.94
 ```
 
 ## Implied Volatility
@@ -201,7 +201,7 @@ println("Model price at IV: \$$(round(model_price, digits=4))")
 **Output:**
 ```
 Implied volatility: 21.38%
-Model price at IV: $8.5
+Model price at IV: 8.5
 ```
 
 ## Volatility Smile
@@ -236,15 +236,15 @@ end
 ```
 Strike | True Vol | Market Price | Implied Vol
 --------------------------------------------------
-130    | 22.2%      | $24.79       | 22.2%
-135    | 21.6%      | $20.68       | 21.6%
-140    | 21.1%      | $16.87       | 21.1%
-145    | 20.5%      | $13.4        | 20.5%
-150    | 20.0%      | $10.33       | 20.0%
-155    | 19.5%      | $7.71        | 19.5%
-160    | 19.1%      | $5.54        | 19.1%
-165    | 18.6%      | $3.83        | 18.6%
-170    | 18.2%      | $2.53        | 18.2%
+130    | 22.2%      | 24.79       | 22.2%
+135    | 21.6%      | 20.68       | 21.6%
+140    | 21.1%      | 16.87       | 21.1%
+145    | 20.5%      | 13.4        | 20.5%
+150    | 20.0%      | 10.33       | 20.0%
+155    | 19.5%      | 7.71        | 19.5%
+160    | 19.1%      | 5.54        | 19.1%
+165    | 18.6%      | 3.83        | 18.6%
+170    | 18.2%      | 2.53        | 18.2%
 ```
 
 ## Edge Cases
@@ -268,9 +268,9 @@ println("Zero vol call: \$$(round(deterministic, digits=4)) (should be ≈\$$(ro
 
 **Output:**
 ```
-Expired OTM call: $0.0
-Expired ITM call: $5.0
-Zero vol call: $16.8279 (should be ≈$16.8279)
+Expired OTM call: 0.0
+Expired ITM call: 5.0
+Zero vol call: 16.8279 (should be ≈16.8279)
 ```
 
 ## Next Steps

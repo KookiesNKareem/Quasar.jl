@@ -6,6 +6,11 @@ using ..Backtesting: BacktestResult
 using ..Optimization: OptimizationResult
 
 # Core types
+"""
+    AbstractVisualization
+
+Base type for visualization objects.
+"""
 abstract type AbstractVisualization end
 
 """
@@ -20,6 +25,11 @@ struct VisualizationSpec{T}
 end
 
 # Theme definitions - Professional styling
+"""
+    LIGHT_THEME
+
+Default light theme configuration for visualizations.
+"""
 const LIGHT_THEME = Dict{Symbol,Any}(
     :backgroundcolor => "#fafafa",
     :textcolor => "#2d3748",
@@ -33,6 +43,11 @@ const LIGHT_THEME = Dict{Symbol,Any}(
     :spinewidth => 1.0,
 )
 
+"""
+    DARK_THEME
+
+Default dark theme configuration for visualizations.
+"""
 const DARK_THEME = Dict{Symbol,Any}(
     :backgroundcolor => "#1a1a2e",
     :textcolor => "#e2e8f0",
@@ -47,6 +62,11 @@ const DARK_THEME = Dict{Symbol,Any}(
 )
 
 # Semantic colors - Refined for both themes
+"""
+    COLORS
+
+Semantic color palette used across visualizations.
+"""
 const COLORS = Dict{Symbol,String}(
     :profit => "#48bb78",
     :loss => "#f56565",

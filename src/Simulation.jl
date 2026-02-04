@@ -102,6 +102,11 @@ end
 # Execution Models
 # ============================================================================
 
+"""
+    AbstractExecutionModel
+
+Base type for execution models that translate orders into fills.
+"""
 abstract type AbstractExecutionModel end
 
 """
@@ -174,6 +179,11 @@ end
 # Simulation Drivers
 # ============================================================================
 
+"""
+    AbstractDriver
+
+Base type for market data drivers used in simulations.
+"""
 abstract type AbstractDriver end
 
 """

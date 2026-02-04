@@ -1162,6 +1162,11 @@ dirty_price(bond::Bond, curve::RateCurve) = price(bond, curve)
 # Short Rate Models
 # ============================================================================
 
+"""
+    ShortRateModel
+
+Base type for short-rate interest rate models.
+"""
 abstract type ShortRateModel end
 
 """
@@ -1395,7 +1400,6 @@ Floor(mat, strike) = Floor(mat, strike, 4, 1.0)
 
 European swaption - option to enter a swap.
 """
-# TODO: Export black_swaption function (currently only price() method exists)
 struct Swaption
     expiry::Float64         # Option expiry
     swap_maturity::Float64  # Underlying swap maturity
@@ -1405,6 +1409,8 @@ struct Swaption
     notional::Float64
 end
 Swaption(exp, mat, strike, is_payer) = Swaption(exp, mat, strike, is_payer, 2, 1.0)
+
+# TODO: Export black_swaption function (currently only price() method exists)
 
 """
     black_caplet(caplet, curve, volatility) -> Float64

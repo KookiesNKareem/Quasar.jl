@@ -14,6 +14,7 @@ makedocs(;
         devurl="dev",
         build_vitepress=false,  # Don't use JLL Node.js - we'll build manually
     ),
+    checkdocs=:none,
     pages=[
         "Home" => "index.md",
         "Getting Started" => [

@@ -228,7 +228,7 @@ receiver = Swaption(1.0, 6.0, 0.05, false)
 price_receiver = price(receiver, curve, swaption_vol)
 
 # With custom frequency and notional
-swaption = Swaption(1.0, 6.0, 0.05, true, 4, 1_000_000.0)  # Quarterly, $1M notional
+swaption = Swaption(1.0, 6.0, 0.05, true, 4, 1_000_000.0)  # Quarterly, 1M notional
 ```
 
 ## Example: Building a Rate Curve and Pricing

@@ -53,10 +53,10 @@ julia --project=. benchmarks/comparison/comprehensive_benchmark.jl
 
 **Compile & run (from script comments):**
 ```bash
-clang++ -std=c++17 -O3 -I$HOME/dev/QuantLib -L$HOME/dev/QuantLib/build/ql \
+clang++ -std=c++17 -O3 -I<HOME>/dev/QuantLib -L<HOME>/dev/QuantLib/build/ql \
   -lQuantLib -o quantlib_benchmark benchmarks/comparison/quantlib_benchmark.cpp
 
-DYLD_LIBRARY_PATH=$HOME/dev/QuantLib/build/ql ./quantlib_benchmark
+DYLD_LIBRARY_PATH=<HOME>/dev/QuantLib/build/ql ./quantlib_benchmark
 ```
 
 ### 3) QuantLib Comparison via PyCall (Julia)

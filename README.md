@@ -30,7 +30,7 @@ A differentiable quantitative finance library for Julia. **8-142x faster than Qu
 | Information coefficient | 0.6 μs | 25 μs (scipy) | **40x** |
 | SMA crossover backtest | 104 μs | 2.5 ms (pandas) | **24x** |
 
-*Benchmarks on Apple M1. Full methodology: see the [Benchmark Methodology](https://KookiesNKareem.github.io/QuantNova.jl/dev/manual/benchmarks/) page.*
+*Benchmarks on Apple M1. Full methodology: see the [Benchmark Methodology](https://KookiesNKareem.github.io/QuantNova.jl/dev/manual/benchmarks.html) page.*
 
 ## Installation
 

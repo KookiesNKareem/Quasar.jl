@@ -10,6 +10,11 @@ using ..TransactionCosts: record_trade!, cost_summary, TradeCostBreakdown, compu
 
 # Strategy Interface
 
+"""
+    AbstractStrategy
+
+Base type for trading strategies used by the backtesting engine.
+"""
 abstract type AbstractStrategy end
 
 """

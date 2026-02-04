@@ -1,5 +1,9 @@
 # API Reference
 
+```@meta
+CurrentModule = QuantNova
+```
+
 ## Pricing
 
 ```@docs
