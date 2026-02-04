@@ -126,7 +126,9 @@ end
 
 # PureJulia implementation (finite differences with central differences for better accuracy)
 function _gradient(::PureJuliaBackend, f, x; eps=1e-7)
-    @warn "Using PureJuliaBackend for gradient computation. This is slow and less accurate than ForwardDiff. Consider using ForwardDiffBackend." maxlog=1
+    if get(ENV, "QUANTNOVA_WARN_PUREJULIA", "1") != "0"
+        @warn "Using PureJuliaBackend for gradient computation. This is slow and less accurate than ForwardDiff. Consider using ForwardDiffBackend." maxlog=1
+    end
     n = length(x)
     g = similar(x)
     for i in 1:n

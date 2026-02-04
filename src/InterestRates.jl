@@ -1,12 +1,21 @@
 module InterestRates
 
 using LinearAlgebra
+using Dates
 using Distributions: Normal, cdf, pdf
 
 export
     # Day count conventions
     DayCountConvention, ACT360, ACT365, Thirty360, ACTACT,
     year_fraction,
+    # Scheduling and conventions
+    Calendar, WeekendCalendar,
+    BusinessDayConvention, Following, ModifiedFollowing, Preceding, ModifiedPreceding,
+    RollRule, NoRoll, EndOfMonth,
+    StubRule, StubNone, ShortFront, ShortBack,
+    Schedule, schedule_periods, accrual_factors, adjust_date, is_business_day,
+    # Multi-curve framework
+    RateIndex, CurveSet, fixing_date, payment_date,
     # Curve types
     RateCurve, DiscountCurve, ZeroCurve, ForwardCurve,
     # Parametric curves
@@ -17,6 +26,8 @@ export
     LinearInterp, LogLinearInterp, CubicSplineInterp,
     # Bootstrapping
     DepositRate, FuturesRate, SwapRate, bootstrap,
+    OISDepositQuote, OISSwapQuote, FRAQuote, IRSwapQuote,
+    bootstrap_ois_curve, bootstrap_forward_curve, bootstrap_curveset,
     # Bonds
     Bond, ZeroCouponBond, FixedRateBond, FloatingRateBond,
     # Note: price() not exported to avoid collision with Instruments.price
@@ -27,8 +38,12 @@ export
     ShortRateModel, Vasicek, CIR, HullWhite,
     bond_price, short_rate, simulate_short_rate,
     # IR Derivatives
+    FRA, FixedLeg, FloatLeg, Swap, par_swap_rate,
     Caplet, Floorlet, Cap, Floor, Swaption,
-    black_caplet, black_cap
+    black_caplet, black_cap,
+    cashflows,
+    # Curve risk
+    bucketed_pv01
 
 # ============================================================================
 # Day Count Conventions
@@ -101,7 +116,15 @@ year_fraction(t1::Real, t2::Real, ::ACT365) = Float64(t2 - t1)
 year_fraction(t1::Real, t2::Real, ::Thirty360) = Float64(t2 - t1)
 year_fraction(t1::Real, t2::Real, ::ACTACT) = Float64(t2 - t1)
 
-# Date-based implementations (requires Dates to be available)
+# Date-based implementations
+year_fraction(d1::Date, d2::Date, ::ACT360) = _year_fraction_act360(d1, d2)
+year_fraction(d1::Date, d2::Date, ::ACT365) = _year_fraction_act365(d1, d2)
+year_fraction(d1::Date, d2::Date, ::Thirty360) = _year_fraction_30360(d1, d2)
+year_fraction(d1::Date, d2::Date, ::ACTACT) = _year_fraction_actact(d1, d2)
+
+year_fraction(d1::DateTime, d2::DateTime, conv::DayCountConvention) =
+    year_fraction(Date(d1), Date(d2), conv)
+
 # These are for actual Date objects, not numeric types
 function _year_fraction_act360(d1, d2)
     days = _day_count(d1, d2)
@@ -160,35 +183,219 @@ end
 # Helper functions for date handling
 # These work with both Date objects and simple (year, month, day) tuples
 
-function _day_count(d1, d2)
-    # Try to use Dates if available, otherwise assume numeric
-    if isdefined(Main, :Dates)
-        return Int(Main.Dates.value(d2) - Main.Dates.value(d1))
-    else
-        # Assume d1, d2 are already day numbers
-        return Int(d2 - d1)
-    end
-end
+_day_count(d1::Date, d2::Date) = Dates.value(d2 - d1)
+_day_count(d1::DateTime, d2::DateTime) = Dates.value(Date(d2) - Date(d1))
+_day_count(d1, d2) = Int(d2 - d1)
 
-function _year_month_day(d)
-    if isdefined(Main, :Dates)
-        return Main.Dates.year(d), Main.Dates.month(d), Main.Dates.day(d)
-    else
-        # Assume d is a tuple (y, m, d)
-        return d[1], d[2], d[3]
-    end
-end
+_year_month_day(d::Date) = (year(d), month(d), day(d))
+_year_month_day(d::DateTime) = (year(d), month(d), day(d))
+_year_month_day(d) = (d[1], d[2], d[3])
 
-function _make_date(y, m, d)
-    if isdefined(Main, :Dates)
-        return Main.Dates.Date(y, m, d)
-    else
-        return (y, m, d)
-    end
-end
+_make_date(y, m, d) = Date(y, m, d)
 
 function _is_leap_year(y)
     (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0)
+end
+
+# ============================================================================
+# Scheduling and Conventions
+# ============================================================================
+
+"""
+    Calendar
+
+Simple business-day calendar with weekend and holiday rules.
+"""
+struct Calendar
+    name::Symbol
+    holidays::Set{Date}
+    weekend::Set{Int}  # 1=Mon ... 7=Sun
+end
+
+Calendar(; name::Symbol=:Generic, holidays::Vector{Date}=Date[], weekend::Set{Int}=Set([6, 7])) =
+    Calendar(name, Set(holidays), weekend)
+
+WeekendCalendar() = Calendar(name=:Weekend)
+
+"""
+    is_business_day(calendar, date) -> Bool
+
+Return true if `date` is a business day under the calendar.
+"""
+function is_business_day(cal::Calendar, d::Date)
+    !(dayofweek(d) in cal.weekend) && !(d in cal.holidays)
+end
+
+abstract type BusinessDayConvention end
+struct Following <: BusinessDayConvention end
+struct ModifiedFollowing <: BusinessDayConvention end
+struct Preceding <: BusinessDayConvention end
+struct ModifiedPreceding <: BusinessDayConvention end
+
+"""
+    adjust_date(date, calendar, bdc) -> Date
+
+Adjust a date using a business-day convention.
+"""
+function adjust_date(d::Date, cal::Calendar, ::Following)
+    dd = d
+    while !is_business_day(cal, dd)
+        dd += Day(1)
+    end
+    dd
+end
+
+function adjust_date(d::Date, cal::Calendar, ::ModifiedFollowing)
+    dd = adjust_date(d, cal, Following())
+    if month(dd) != month(d)
+        dd = adjust_date(d, cal, Preceding())
+    end
+    dd
+end
+
+function adjust_date(d::Date, cal::Calendar, ::Preceding)
+    dd = d
+    while !is_business_day(cal, dd)
+        dd -= Day(1)
+    end
+    dd
+end
+
+function adjust_date(d::Date, cal::Calendar, ::ModifiedPreceding)
+    dd = adjust_date(d, cal, Preceding())
+    if month(dd) != month(d)
+        dd = adjust_date(d, cal, Following())
+    end
+    dd
+end
+
+abstract type RollRule end
+struct NoRoll <: RollRule end
+struct EndOfMonth <: RollRule end
+
+abstract type StubRule end
+struct StubNone <: StubRule end
+struct ShortFront <: StubRule end
+struct ShortBack <: StubRule end
+
+is_eom(d::Date) = d == Dates.lastdayofmonth(d)
+
+function _apply_roll(d::Date, roll::RollRule, anchor_eom::Bool)
+    if roll isa EndOfMonth && anchor_eom
+        return Dates.lastdayofmonth(d)
+    end
+    d
+end
+
+"""
+    Schedule
+
+Accrual/payment schedule generated from start/end dates and conventions.
+"""
+struct Schedule
+    dates::Vector{Date}
+    calendar::Calendar
+    bdc::BusinessDayConvention
+    roll::RollRule
+    stub::StubRule
+end
+
+Base.length(s::Schedule) = length(s.dates)
+Base.getindex(s::Schedule, i::Int) = s.dates[i]
+Base.iterate(s::Schedule, args...) = iterate(s.dates, args...)
+
+"""
+    Schedule(start_date, end_date; tenor=Month(3), calendar=WeekendCalendar(),
+             bdc=ModifiedFollowing(), roll=NoRoll(), stub=ShortBack(),
+             include_start=true, include_end=true)
+
+Generate an adjusted schedule between two dates.
+"""
+function Schedule(
+    start_date::Date,
+    end_date::Date;
+    tenor::Period=Month(3),
+    calendar::Calendar=WeekendCalendar(),
+    bdc::BusinessDayConvention=ModifiedFollowing(),
+    roll::RollRule=NoRoll(),
+    stub::StubRule=ShortBack(),
+    include_start::Bool=true,
+    include_end::Bool=true
+)
+    start_date < end_date || throw(ArgumentError("start_date must be before end_date"))
+
+    anchor_eom = roll isa EndOfMonth && is_eom(start_date)
+    dates = Date[]
+
+    if stub isa ShortBack || stub isa StubNone
+        d = start_date
+        push!(dates, d)
+        while true
+            d_next = _apply_roll(d + tenor, roll, anchor_eom)
+            if d_next >= end_date
+                break
+            end
+            push!(dates, d_next)
+            d = d_next
+        end
+        if stub isa StubNone && d_next != end_date
+            throw(ArgumentError("Schedule not aligned to tenor; use ShortBack or ShortFront"))
+        end
+        push!(dates, end_date)
+    elseif stub isa ShortFront
+        d = end_date
+        push!(dates, d)
+        while true
+            d_prev = _apply_roll(d - tenor, roll, anchor_eom)
+            if d_prev <= start_date
+                break
+            end
+            push!(dates, d_prev)
+            d = d_prev
+        end
+        if stub isa StubNone && d_prev != start_date
+            throw(ArgumentError("Schedule not aligned to tenor; use ShortBack or ShortFront"))
+        end
+        push!(dates, start_date)
+        reverse!(dates)
+    else
+        throw(ArgumentError("Unsupported stub rule: $(typeof(stub))"))
+    end
+
+    # Adjust and de-duplicate
+    adjusted = [adjust_date(d, calendar, bdc) for d in dates]
+    adjusted = unique(adjusted)
+
+    if !include_start && !isempty(adjusted)
+        adjusted = adjusted[2:end]
+    end
+    if !include_end && !isempty(adjusted)
+        adjusted = adjusted[1:end-1]
+    end
+
+    Schedule(adjusted, calendar, bdc, roll, stub)
+end
+
+"""
+    schedule_periods(schedule) -> Vector{Tuple{Date,Date}}
+
+Return consecutive accrual periods from the schedule dates.
+"""
+function schedule_periods(s::Schedule)
+    periods = Tuple{Date,Date}[]
+    for i in 1:(length(s.dates) - 1)
+        push!(periods, (s.dates[i], s.dates[i+1]))
+    end
+    periods
+end
+
+"""
+    accrual_factors(schedule, day_count) -> Vector{Float64}
+
+Year-fraction accruals for each period in the schedule.
+"""
+function accrual_factors(s::Schedule, day_count::DayCountConvention)
+    [year_fraction(d1, d2, day_count) for (d1, d2) in schedule_periods(s)]
 end
 
 # ============================================================================
@@ -530,6 +737,101 @@ function ZeroCurve(dc::DiscountCurve)
     times = vcat([0.0], collect(range(1e-6, t_max, length=n_points)))
     rates = [zero_rate(dc, t) for t in times]
     ZeroCurve(times, rates; interp=LinearInterp())
+end
+
+# ============================================================================
+# Multi-Curve Framework
+# ============================================================================
+
+"""
+    RateIndex
+
+Market index conventions for forwarding (e.g., SOFR3M, EURIBOR6M).
+"""
+struct RateIndex
+    name::Symbol
+    tenor::Period
+    day_count::DayCountConvention
+    calendar::Calendar
+    bdc::BusinessDayConvention
+    fixing_lag::Period
+    payment_lag::Period
+    compounding::Symbol
+end
+
+function RateIndex(
+    name::Symbol;
+    tenor::Period=Month(3),
+    day_count::DayCountConvention=ACT360(),
+    calendar::Calendar=WeekendCalendar(),
+    bdc::BusinessDayConvention=ModifiedFollowing(),
+    fixing_lag::Period=Day(2),
+    payment_lag::Period=Day(0),
+    compounding::Symbol=:simple
+)
+    RateIndex(name, tenor, day_count, calendar, bdc, fixing_lag, payment_lag, compounding)
+end
+
+"""
+    fixing_date(index, accrual_start) -> Date
+"""
+fixing_date(idx::RateIndex, accrual_start::Date) =
+    adjust_date(accrual_start - idx.fixing_lag, idx.calendar, idx.bdc)
+
+"""
+    payment_date(index, accrual_end) -> Date
+"""
+payment_date(idx::RateIndex, accrual_end::Date) =
+    adjust_date(accrual_end + idx.payment_lag, idx.calendar, idx.bdc)
+
+"""
+    CurveSet
+
+Container for discount curve and multiple forwarding curves keyed by index name.
+"""
+struct CurveSet
+    asof::Date
+    discount::RateCurve
+    forwards::Dict{Symbol,RateCurve}
+    day_count::DayCountConvention
+end
+
+function CurveSet(
+    asof::Date,
+    discount::RateCurve;
+    forwards::AbstractDict{Symbol,<:RateCurve}=Dict{Symbol,RateCurve}(),
+    day_count::DayCountConvention=ACT365()
+)
+    CurveSet(asof, discount, Dict{Symbol,RateCurve}(k => v for (k, v) in forwards), day_count)
+end
+
+discount(cs::CurveSet, t::Real) = discount(cs.discount, Float64(t))
+
+function discount(cs::CurveSet, d::Date; day_count::DayCountConvention=cs.day_count)
+    t = year_fraction(cs.asof, d, day_count)
+    discount(cs.discount, t)
+end
+
+function forward_rate(cs::CurveSet, idx::Symbol, t1::Real, t2::Real)
+    curve = get(cs.forwards, idx, cs.discount)
+    forward_rate(curve, Float64(t1), Float64(t2))
+end
+
+function forward_rate(cs::CurveSet, idx::RateIndex, d1::Date, d2::Date)
+    t1 = year_fraction(cs.asof, d1, idx.day_count)
+    t2 = year_fraction(cs.asof, d2, idx.day_count)
+    curve = get(cs.forwards, idx.name, cs.discount)
+    forward_rate(curve, t1, t2)
+end
+
+function _with_discount(cs::CurveSet, curve::RateCurve)
+    CurveSet(cs.asof, curve; forwards=cs.forwards, day_count=cs.day_count)
+end
+
+function _with_forward(cs::CurveSet, name::Symbol, curve::RateCurve)
+    forwards = copy(cs.forwards)
+    forwards[name] = curve
+    CurveSet(cs.asof, cs.discount; forwards=forwards, day_count=cs.day_count)
 end
 
 # ============================================================================
@@ -957,6 +1259,270 @@ function bootstrap_instrument(s::SwapRate, times, dfs)
 end
 
 # ============================================================================
+# Multi-Curve Bootstrapping (OIS + FRA/IRS)
+# ============================================================================
+
+abstract type CurveQuote end
+
+"""
+    OISDepositQuote(start_date, end_date, rate; day_count=ACT360())
+"""
+struct OISDepositQuote <: CurveQuote
+    start_date::Date
+    end_date::Date
+    rate::Float64
+    day_count::DayCountConvention
+end
+
+OISDepositQuote(start_date, end_date, rate; day_count::DayCountConvention=ACT360()) =
+    OISDepositQuote(start_date, end_date, rate, day_count)
+
+"""
+    OISSwapQuote(start_date, maturity_date, fixed_rate;
+                 fixed_frequency=1, fixed_day_count=ACT360(),
+                 calendar=WeekendCalendar(), bdc=ModifiedFollowing())
+"""
+struct OISSwapQuote <: CurveQuote
+    start_date::Date
+    maturity_date::Date
+    fixed_rate::Float64
+    fixed_frequency::Int
+    fixed_day_count::DayCountConvention
+    calendar::Calendar
+    bdc::BusinessDayConvention
+end
+
+OISSwapQuote(start_date, maturity_date, fixed_rate;
+             fixed_frequency::Int=1,
+             fixed_day_count::DayCountConvention=ACT360(),
+             calendar::Calendar=WeekendCalendar(),
+             bdc::BusinessDayConvention=ModifiedFollowing()) =
+    OISSwapQuote(start_date, maturity_date, fixed_rate, fixed_frequency, fixed_day_count, calendar, bdc)
+
+"""
+    FRAQuote(start_date, end_date, rate, index)
+"""
+struct FRAQuote <: CurveQuote
+    start_date::Date
+    end_date::Date
+    rate::Float64
+    index::RateIndex
+end
+
+"""
+    IRSwapQuote(start_date, maturity_date, fixed_rate, index;
+                fixed_frequency=2, fixed_day_count=Thirty360(),
+                calendar=WeekendCalendar(), bdc=ModifiedFollowing())
+"""
+struct IRSwapQuote <: CurveQuote
+    start_date::Date
+    maturity_date::Date
+    fixed_rate::Float64
+    fixed_frequency::Int
+    fixed_day_count::DayCountConvention
+    index::RateIndex
+    calendar::Calendar
+    bdc::BusinessDayConvention
+end
+
+IRSwapQuote(start_date, maturity_date, fixed_rate, index;
+            fixed_frequency::Int=2,
+            fixed_day_count::DayCountConvention=Thirty360(),
+            calendar::Calendar=WeekendCalendar(),
+            bdc::BusinessDayConvention=ModifiedFollowing()) =
+    IRSwapQuote(start_date, maturity_date, fixed_rate, fixed_frequency, fixed_day_count, index, calendar, bdc)
+
+quote_maturity(q::OISDepositQuote) = q.end_date
+quote_maturity(q::OISSwapQuote) = q.maturity_date
+quote_maturity(q::FRAQuote) = q.end_date
+quote_maturity(q::IRSwapQuote) = q.maturity_date
+
+function _tenor_from_frequency(freq::Int)
+    (12 % freq == 0) || throw(ArgumentError("fixed_frequency must divide 12, got $freq"))
+    Month(Int(12 ÷ freq))
+end
+
+function _discount_at(curve::RateCurve, asof::Date, d::Date, day_count::DayCountConvention)
+    t = year_fraction(asof, d, day_count)
+    discount(curve, t)
+end
+
+function _temp_curve(times, dfs; interp::InterpolationMethod=LogLinearInterp())
+    DiscountCurve(times, dfs; interp=interp)
+end
+
+"""
+    bootstrap_ois_curve(quotes; asof, curve_day_count=ACT365(), interp=LogLinearInterp())
+
+Bootstrap an OIS discount curve from OIS deposits and OIS swaps.
+"""
+function bootstrap_ois_curve(
+    quotes::Vector{<:CurveQuote};
+    asof::Date,
+    curve_day_count::DayCountConvention=ACT365(),
+    interp::InterpolationMethod=LogLinearInterp()
+)
+    filtered = [q for q in quotes if q isa OISDepositQuote || q isa OISSwapQuote]
+    isempty(filtered) && throw(ArgumentError("No OIS quotes provided"))
+    sorted = sort(filtered; by=quote_maturity)
+
+    times = Float64[0.0]
+    dfs = Float64[1.0]
+
+    for q in sorted
+        curve = _temp_curve(times, dfs; interp=interp)
+        if q isa OISDepositQuote
+            qq = q::OISDepositQuote
+            accrual = year_fraction(qq.start_date, qq.end_date, qq.day_count)
+            df_start = _discount_at(curve, asof, qq.start_date, curve_day_count)
+            df_end = df_start / (1.0 + qq.rate * accrual)
+            t_end = year_fraction(asof, qq.end_date, curve_day_count)
+            push!(times, t_end)
+            push!(dfs, df_end)
+        elseif q isa OISSwapQuote
+            qq = q::OISSwapQuote
+            tenor = _tenor_from_frequency(qq.fixed_frequency)
+            sched = Schedule(qq.start_date, qq.maturity_date; tenor=tenor, calendar=qq.calendar, bdc=qq.bdc)
+            periods = schedule_periods(sched)
+            n = length(periods)
+            n == 0 && throw(ArgumentError("OIS swap schedule is empty"))
+
+            sum_prev = 0.0
+            for i in 1:(n - 1)
+                d1, d2 = periods[i]
+                accrual = year_fraction(d1, d2, qq.fixed_day_count)
+                df = _discount_at(curve, asof, d2, curve_day_count)
+                sum_prev += accrual * df
+            end
+
+            d1_last, d2_last = periods[end]
+            accrual_last = year_fraction(d1_last, d2_last, qq.fixed_day_count)
+            df_end = (1.0 - qq.fixed_rate * sum_prev) / (1.0 + qq.fixed_rate * accrual_last)
+            t_end = year_fraction(asof, d2_last, curve_day_count)
+            push!(times, t_end)
+            push!(dfs, df_end)
+        end
+    end
+
+    DiscountCurve(times, dfs; interp=interp)
+end
+
+"""
+    bootstrap_forward_curve(quotes; asof, discount_curve, interp=LogLinearInterp())
+
+Bootstrap a forwarding curve from FRA and IRS quotes using a discount curve.
+"""
+function bootstrap_forward_curve(
+    quotes::Vector{<:CurveQuote};
+    asof::Date,
+    discount_curve::RateCurve,
+    curve_day_count::DayCountConvention=ACT365(),
+    interp::InterpolationMethod=LogLinearInterp()
+)
+    filtered = [q for q in quotes if q isa FRAQuote || q isa IRSwapQuote]
+    isempty(filtered) && throw(ArgumentError("No FRA/IRS quotes provided"))
+    sorted = sort(filtered; by=quote_maturity)
+
+    idx = nothing
+    for q in sorted
+        if q isa FRAQuote
+            idx = (q::FRAQuote).index
+            break
+        elseif q isa IRSwapQuote
+            idx = (q::IRSwapQuote).index
+            break
+        end
+    end
+    idx === nothing && throw(ArgumentError("Forward quotes require an index"))
+
+    times = Float64[0.0]
+    dfs = Float64[1.0]
+
+    for q in sorted
+        curve = _temp_curve(times, dfs; interp=interp)
+        if q isa FRAQuote
+            qq = q::FRAQuote
+            accrual = year_fraction(qq.start_date, qq.end_date, qq.index.day_count)
+            t_start = year_fraction(asof, qq.start_date, qq.index.day_count)
+            t_end = year_fraction(asof, qq.end_date, qq.index.day_count)
+            df_start = discount(curve, t_start)
+            df_end = df_start / (1.0 + qq.rate * accrual)
+            push!(times, t_end)
+            push!(dfs, df_end)
+        elseif q isa IRSwapQuote
+            qq = q::IRSwapQuote
+            tenor_fixed = _tenor_from_frequency(qq.fixed_frequency)
+            fixed_sched = Schedule(qq.start_date, qq.maturity_date; tenor=tenor_fixed, calendar=qq.calendar, bdc=qq.bdc)
+            float_sched = Schedule(qq.start_date, qq.maturity_date; tenor=qq.index.tenor, calendar=qq.calendar, bdc=qq.bdc)
+
+            fixed_annuity = 0.0
+            for (d1, d2) in schedule_periods(fixed_sched)
+                accrual = year_fraction(d1, d2, qq.fixed_day_count)
+                df = _discount_at(discount_curve, asof, adjust_date(d2, qq.calendar, qq.bdc), curve_day_count)
+                fixed_annuity += accrual * df
+            end
+
+            float_periods = schedule_periods(float_sched)
+            n = length(float_periods)
+            n == 0 && throw(ArgumentError("IRS float schedule is empty"))
+
+            float_pv = 0.0
+            for i in 1:(n - 1)
+                d1, d2 = float_periods[i]
+                accrual = year_fraction(d1, d2, qq.index.day_count)
+                t1 = year_fraction(asof, d1, qq.index.day_count)
+                t2 = year_fraction(asof, d2, qq.index.day_count)
+                fwd = forward_rate(curve, t1, t2)
+                df = _discount_at(discount_curve, asof, payment_date(qq.index, d2), curve_day_count)
+                float_pv += fwd * accrual * df
+            end
+
+            d1_last, d2_last = float_periods[end]
+            t1_last = year_fraction(asof, d1_last, qq.index.day_count)
+            t2_last = year_fraction(asof, d2_last, qq.index.day_count)
+            df_start = discount(curve, t1_last)
+            df_disc = _discount_at(discount_curve, asof, payment_date(qq.index, d2_last), curve_day_count)
+            k = qq.fixed_rate * fixed_annuity - float_pv
+            df_end = df_start / (1.0 + k / df_disc)
+
+            push!(times, t2_last)
+            push!(dfs, df_end)
+        end
+    end
+
+    DiscountCurve(times, dfs; interp=interp)
+end
+
+"""
+    bootstrap_curveset(ois_quotes, fwd_quotes; asof, curve_day_count=ACT365())
+
+Build a CurveSet with an OIS discount curve and a single forwarding curve.
+"""
+function bootstrap_curveset(
+    ois_quotes::Vector{<:CurveQuote},
+    fwd_quotes::Vector{<:CurveQuote};
+    asof::Date,
+    curve_day_count::DayCountConvention=ACT365()
+)
+    dc = bootstrap_ois_curve(ois_quotes; asof=asof, curve_day_count=curve_day_count)
+    fc = bootstrap_forward_curve(fwd_quotes; asof=asof, discount_curve=dc, curve_day_count=curve_day_count)
+
+    idx = nothing
+    for q in fwd_quotes
+        if q isa FRAQuote
+            idx = (q::FRAQuote).index
+            break
+        elseif q isa IRSwapQuote
+            idx = (q::IRSwapQuote).index
+            break
+        end
+    end
+    idx === nothing && throw(ArgumentError("Forward quotes require an index"))
+
+    CurveSet(asof, dc; forwards=Dict(idx.name => fc), day_count=curve_day_count)
+end
+
+# ============================================================================
 # Bonds
 # ============================================================================
 
@@ -1359,6 +1925,193 @@ end
 # Interest Rate Derivatives
 # ============================================================================
 
+"""
+    FRA(start_date, end_date, fixed_rate, index; notional=1.0, pay_fixed=true)
+
+Forward rate agreement on a single period.
+"""
+struct FRA
+    start_date::Date
+    end_date::Date
+    fixed_rate::Float64
+    index::RateIndex
+    notional::Float64
+    pay_fixed::Bool
+end
+
+FRA(start_date, end_date, fixed_rate, index; notional=1.0, pay_fixed=true) =
+    FRA(start_date, end_date, fixed_rate, index, notional, pay_fixed)
+
+"""
+    FixedLeg(schedule, rate; day_count=Thirty360(), notional=1.0, pay=true, payment_lag=Day(0))
+"""
+struct FixedLeg
+    schedule::Schedule
+    rate::Float64
+    day_count::DayCountConvention
+    notional::Float64
+    pay::Bool
+    payment_lag::Period
+end
+
+FixedLeg(schedule, rate; day_count=Thirty360(), notional=1.0, pay=true, payment_lag=Day(0)) =
+    FixedLeg(schedule, rate, day_count, notional, pay, payment_lag)
+
+"""
+    FloatLeg(schedule, index; spread=0.0, notional=1.0, pay=false)
+"""
+struct FloatLeg
+    schedule::Schedule
+    index::RateIndex
+    spread::Float64
+    notional::Float64
+    pay::Bool
+end
+
+FloatLeg(schedule, index; spread=0.0, notional=1.0, pay=false) =
+    FloatLeg(schedule, index, spread, notional, pay)
+
+"""
+    Swap(fixed_leg, float_leg)
+
+Plain-vanilla fixed/float interest rate swap.
+"""
+struct Swap
+    fixed_leg::FixedLeg
+    float_leg::FloatLeg
+end
+
+"""
+    cashflows(...)
+
+Return schedule-based cashflows for swap legs and FRAs.
+"""
+function cashflows end
+
+"""
+    Swap(start_date, end_date, fixed_rate, index; tenor=Month(6), calendar=WeekendCalendar(),
+         bdc=ModifiedFollowing(), fixed_day_count=Thirty360(), float_spread=0.0,
+         notional=1.0, pay_fixed=true)
+
+Convenience constructor for a standard fixed/float swap sharing one schedule.
+"""
+function Swap(
+    start_date::Date,
+    end_date::Date,
+    fixed_rate::Float64,
+    index::RateIndex;
+    tenor::Period=Month(6),
+    calendar::Calendar=WeekendCalendar(),
+    bdc::BusinessDayConvention=ModifiedFollowing(),
+    fixed_day_count::DayCountConvention=Thirty360(),
+    float_spread::Float64=0.0,
+    notional::Float64=1.0,
+    pay_fixed::Bool=true
+)
+    sched = Schedule(start_date, end_date; tenor=tenor, calendar=calendar, bdc=bdc)
+    fixed_leg = FixedLeg(sched, fixed_rate; day_count=fixed_day_count, notional=notional, pay=pay_fixed)
+    float_leg = FloatLeg(sched, index; spread=float_spread, notional=notional, pay=!pay_fixed)
+    Swap(fixed_leg, float_leg)
+end
+
+function _fixed_leg_cashflows(leg::FixedLeg)
+    flows = Tuple{Date,Float64}[]
+    sign = leg.pay ? -1.0 : 1.0
+    for (d1, d2) in schedule_periods(leg.schedule)
+        accrual = year_fraction(d1, d2, leg.day_count)
+        pay_date = adjust_date(d2 + leg.payment_lag, leg.schedule.calendar, leg.schedule.bdc)
+        amount = sign * leg.notional * leg.rate * accrual
+        push!(flows, (pay_date, amount))
+    end
+    flows
+end
+
+cashflows(leg::FixedLeg) = _fixed_leg_cashflows(leg)
+
+function _float_leg_cashflows(leg::FloatLeg, cs::CurveSet)
+    flows = Tuple{Date,Float64}[]
+    sign = leg.pay ? -1.0 : 1.0
+    for (d1, d2) in schedule_periods(leg.schedule)
+        accrual = year_fraction(d1, d2, leg.index.day_count)
+        rate = forward_rate(cs, leg.index, d1, d2) + leg.spread
+        pay_date = payment_date(leg.index, d2)
+        amount = sign * leg.notional * rate * accrual
+        push!(flows, (pay_date, amount))
+    end
+    flows
+end
+
+cashflows(leg::FloatLeg, cs::CurveSet) = _float_leg_cashflows(leg, cs)
+
+function cashflows(s::Swap, cs::CurveSet)
+    (fixed=cashflows(s.fixed_leg), float=cashflows(s.float_leg, cs))
+end
+
+"""
+    price(fra, curveset) -> Float64
+
+Present value of a FRA using a CurveSet.
+"""
+function price(fra::FRA, cs::CurveSet)
+    accrual = year_fraction(fra.start_date, fra.end_date, fra.index.day_count)
+    fwd = forward_rate(cs, fra.index, fra.start_date, fra.end_date)
+    pay_date = payment_date(fra.index, fra.end_date)
+    df = discount(cs, pay_date; day_count=cs.day_count)
+    sign = fra.pay_fixed ? 1.0 : -1.0
+    sign * (fwd - fra.fixed_rate) * accrual * fra.notional * df
+end
+
+function cashflows(fra::FRA, cs::CurveSet)
+    accrual = year_fraction(fra.start_date, fra.end_date, fra.index.day_count)
+    fwd = forward_rate(cs, fra.index, fra.start_date, fra.end_date)
+    pay_date = payment_date(fra.index, fra.end_date)
+    sign = fra.pay_fixed ? 1.0 : -1.0
+    amount = sign * (fwd - fra.fixed_rate) * accrual * fra.notional
+    (pay_date, amount)
+end
+
+"""
+    price(fixed_leg, curveset) -> Float64
+"""
+function price(leg::FixedLeg, cs::CurveSet)
+    sum(amount * discount(cs, d; day_count=cs.day_count) for (d, amount) in _fixed_leg_cashflows(leg))
+end
+
+"""
+    price(float_leg, curveset) -> Float64
+"""
+function price(leg::FloatLeg, cs::CurveSet)
+    sum(amount * discount(cs, d; day_count=cs.day_count) for (d, amount) in _float_leg_cashflows(leg, cs))
+end
+
+"""
+    price(swap, curveset) -> Float64
+"""
+price(s::Swap, cs::CurveSet) = price(s.fixed_leg, cs) + price(s.float_leg, cs)
+
+"""
+    par_swap_rate(swap, curveset) -> Float64
+
+Fixed rate that makes the swap PV zero (ignores fixed leg sign).
+"""
+function par_swap_rate(s::Swap, cs::CurveSet)
+    annuity = sum(
+        year_fraction(d1, d2, s.fixed_leg.day_count) *
+        discount(cs, adjust_date(d2 + s.fixed_leg.payment_lag, s.fixed_leg.schedule.calendar, s.fixed_leg.schedule.bdc);
+                 day_count=cs.day_count)
+        for (d1, d2) in schedule_periods(s.fixed_leg.schedule)
+    )
+
+    float_pv = sum(
+        (forward_rate(cs, s.float_leg.index, d1, d2) + s.float_leg.spread) *
+        year_fraction(d1, d2, s.float_leg.index.day_count) *
+        discount(cs, payment_date(s.float_leg.index, d2); day_count=cs.day_count)
+        for (d1, d2) in schedule_periods(s.float_leg.schedule)
+    )
+
+    float_pv / annuity
+end
+
 """Caplet: call option on forward rate"""
 struct Caplet
     start::Float64      # Start of rate period
@@ -1523,6 +2276,139 @@ function price(s::Swaption, curve::RateCurve, σ::Float64)
     else
         s.notional * A * (s.strike * cdf(N, -d2) - S * cdf(N, -d1))
     end
+end
+
+# ============================================================================
+# Curve Risk (Bucketed PV01)
+# ============================================================================
+
+_curve_nodes(curve::DiscountCurve) = curve.times, curve.values
+_curve_nodes(curve::ZeroCurve) = curve.times, curve.values
+_curve_nodes(curve::ForwardCurve) = curve.times, curve.values
+_curve_nodes(::RateCurve) = throw(ArgumentError("Bucketed risk only supported for node-based curves"))
+
+function _bump_curve(curve::DiscountCurve, idx::Int, bump::Float64; method::Symbol=:zero)
+    times = copy(curve.times)
+    values = copy(curve.values)
+    t = times[idx]
+    if t <= 0
+        return curve
+    end
+
+    if method == :df
+        # Bump discount factor via equivalent rate bump
+        values[idx] *= exp(-bump * t)
+    elseif method == :zero
+        zr = -log(values[idx]) / t
+        zr += bump
+        values[idx] = exp(-zr * t)
+    else
+        throw(ArgumentError("Unknown bump method: $method"))
+    end
+
+    DiscountCurve(times, values; interp=curve.interp)
+end
+
+function _bump_curve(curve::ZeroCurve, idx::Int, bump::Float64; method::Symbol=:zero)
+    times = copy(curve.times)
+    values = copy(curve.values)
+    values[idx] += bump
+    ZeroCurve(times, values; interp=curve.interp)
+end
+
+function _bump_curve(curve::ForwardCurve, idx::Int, bump::Float64; method::Symbol=:forward)
+    times = copy(curve.times)
+    values = copy(curve.values)
+    values[idx] += bump
+    ForwardCurve(times, values; interp=curve.interp)
+end
+
+"""
+    bucketed_pv01(instrument, curve; bump=1e-4, method=:zero, price_fn=price)
+
+Compute bucketed PV01 by bumping each curve node by `bump` and repricing.
+Returns a named tuple `(base, bump, buckets)` where buckets map time->ΔPV.
+"""
+function bucketed_pv01(
+    instrument,
+    curve::RateCurve;
+    bump::Float64=1e-4,
+    method::Symbol=:zero,
+    price_fn::Function=price
+)
+    bucketed_pv01(c -> price_fn(instrument, c), curve; bump=bump, method=method)
+end
+
+"""
+    bucketed_pv01(price_fn, curve; bump=1e-4, method=:zero)
+
+Bucketed PV01 for any pricing function of a curve.
+"""
+function bucketed_pv01(
+    price_fn::Function,
+    curve::RateCurve;
+    bump::Float64=1e-4,
+    method::Symbol=:zero
+)
+    times, _ = _curve_nodes(curve)
+    base = price_fn(curve)
+    buckets = Dict{Float64,Float64}()
+
+    for i in eachindex(times)
+        t = times[i]
+        t <= 0 && continue
+        bumped_curve = _bump_curve(curve, i, bump; method=method)
+        pv = price_fn(bumped_curve)
+        buckets[t] = pv - base
+    end
+
+    (base=base, bump=bump, buckets=buckets)
+end
+
+"""
+    bucketed_pv01(price_fn, curveset; bump=1e-4, method=:zero, curve_ids=nothing)
+
+Bucketed PV01 across multiple curves in a CurveSet.
+Returns a named tuple `(base, bump, curves)` where curves map curve_id->buckets.
+"""
+function bucketed_pv01(
+    price_fn::Function,
+    cs::CurveSet;
+    bump::Float64=1e-4,
+    method::Symbol=:zero,
+    curve_ids=nothing
+)
+    base = price_fn(cs)
+    ids = curve_ids === nothing ? vcat([:discount], collect(keys(cs.forwards))) : curve_ids
+    curves = Dict{Symbol,Dict{Float64,Float64}}()
+
+    for id in ids
+        curve = id == :discount ? cs.discount : cs.forwards[id]
+        times, _ = _curve_nodes(curve)
+        buckets = Dict{Float64,Float64}()
+        for i in eachindex(times)
+            t = times[i]
+            t <= 0 && continue
+            bumped_curve = _bump_curve(curve, i, bump; method=method)
+            cs_bumped = id == :discount ? _with_discount(cs, bumped_curve) : _with_forward(cs, id, bumped_curve)
+            pv = price_fn(cs_bumped)
+            buckets[t] = pv - base
+        end
+        curves[id] = buckets
+    end
+
+    (base=base, bump=bump, curves=curves)
+end
+
+function bucketed_pv01(
+    instrument,
+    cs::CurveSet;
+    bump::Float64=1e-4,
+    method::Symbol=:zero,
+    curve_ids=nothing,
+    price_fn::Function=price
+)
+    bucketed_pv01(c -> price_fn(instrument, c), cs; bump=bump, method=method, curve_ids=curve_ids)
 end
 
 end # module

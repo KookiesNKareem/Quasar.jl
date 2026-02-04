@@ -103,7 +103,7 @@ export PriceHistory, returns, resample, align
 export CSVAdapter, ParquetAdapter, YAHOO_ADAPTER
 export fetch_prices, fetch_multiple, fetch_returns, fetch_return_matrix
 export to_backtest_format
-import .MarketData: load, save
+import .MarketData: load
 
 # Interest rates
 include("InterestRates.jl")
@@ -111,8 +111,18 @@ using .InterestRates
 export RateCurve, DiscountCurve, ZeroCurve, ForwardCurve
 export NelsonSiegelCurve, SvenssonCurve, fit_nelson_siegel, fit_svensson
 export discount, zero_rate, forward_rate, instantaneous_forward
+export Calendar, WeekendCalendar
+export BusinessDayConvention, Following, ModifiedFollowing, Preceding, ModifiedPreceding
+export RollRule, NoRoll, EndOfMonth
+export StubRule, StubNone, ShortFront, ShortBack
+export Schedule, schedule_periods, accrual_factors, adjust_date, is_business_day
+export RateIndex, CurveSet, fixing_date, payment_date
 export LinearInterp, LogLinearInterp, CubicSplineInterp
 export DepositRate, FuturesRate, SwapRate, bootstrap
+export OISDepositQuote, OISSwapQuote, FRAQuote, IRSwapQuote
+export bootstrap_ois_curve, bootstrap_forward_curve, bootstrap_curveset
+export FRA, FixedLeg, FloatLeg, Swap, par_swap_rate
+export cashflows
 export Bond, ZeroCouponBond, FixedRateBond, FloatingRateBond
 export yield_to_maturity, duration, modified_duration, convexity, dv01
 export accrued_interest, clean_price, dirty_price
@@ -120,6 +130,7 @@ export ShortRateModel, Vasicek, CIR, HullWhite
 export bond_price, short_rate, simulate_short_rate
 export Caplet, Floorlet, Cap, Floor, Swaption
 export black_caplet, black_floorlet, black_cap, black_floor
+export bucketed_pv01
 
 # Simulation engine
 include("Simulation.jl")

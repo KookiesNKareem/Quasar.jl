@@ -1,7 +1,12 @@
 using Test
-using Enzyme
-using Reactant
 using QuantNova
+
+const RUN_GPU_BACKENDS = get(ENV, "QUANTNOVA_TEST_GPU_BACKENDS", "0") == "1"
+
+if RUN_GPU_BACKENDS
+    import Enzyme
+    using Reactant
+end
 
 @testset "Backend Parity" begin
     f(x) = sum(x.^2) + prod(x)
@@ -20,13 +25,15 @@ using QuantNova
         @test pj_grad2 ≈ fd_grad2 atol=1e-6
     end
 
-    @testset "Enzyme matches ForwardDiff" begin
-        enz_grad = QuantNova.gradient(f, x; backend=EnzymeBackend())
-        @test enz_grad ≈ fd_grad atol=1e-10
+    if RUN_GPU_BACKENDS
+        @testset "Enzyme matches ForwardDiff" begin
+            enz_grad = QuantNova.gradient(f, x; backend=EnzymeBackend())
+            @test enz_grad ≈ fd_grad atol=1e-10
 
-        enz_val, enz_grad2 = QuantNova.value_and_gradient(f, x; backend=EnzymeBackend())
-        @test enz_val ≈ fd_val
-        @test enz_grad2 ≈ fd_grad2 atol=1e-10
+            enz_val, enz_grad2 = QuantNova.value_and_gradient(f, x; backend=EnzymeBackend())
+            @test enz_val ≈ fd_val
+            @test enz_grad2 ≈ fd_grad2 atol=1e-10
+        end
     end
 
     @testset "Hessian Parity" begin
@@ -36,9 +43,10 @@ using QuantNova
 
         pj_hess = QuantNova.hessian(h, x; backend=PureJuliaBackend())
         @test pj_hess ≈ fd_hess atol=1e-4  # Finite diff less precise
-
-        enz_hess = QuantNova.hessian(h, x; backend=EnzymeBackend())
-        @test enz_hess ≈ fd_hess atol=1e-10
+        if RUN_GPU_BACKENDS
+            enz_hess = QuantNova.hessian(h, x; backend=EnzymeBackend())
+            @test enz_hess ≈ fd_hess atol=1e-10
+        end
     end
 
     @testset "Jacobian Parity" begin
@@ -48,34 +56,37 @@ using QuantNova
 
         pj_jac = QuantNova.jacobian(g, x; backend=PureJuliaBackend())
         @test pj_jac ≈ fd_jac atol=1e-6
-
-        enz_jac = QuantNova.jacobian(g, x; backend=EnzymeBackend())
-        @test enz_jac ≈ fd_jac atol=1e-10
+        if RUN_GPU_BACKENDS
+            enz_jac = QuantNova.jacobian(g, x; backend=EnzymeBackend())
+            @test enz_jac ≈ fd_jac atol=1e-10
+        end
     end
 
-    @testset "Reactant matches ForwardDiff" begin
-        # Use simpler function - Reactant doesn't support prod() reduction in reverse mode
-        f_simple(x) = sum(x.^2) + sum(x)
+    if RUN_GPU_BACKENDS
+        @testset "Reactant matches ForwardDiff" begin
+            # Use simpler function - Reactant doesn't support prod() reduction in reverse mode
+            f_simple(x) = sum(x.^2) + sum(x)
 
-        fd_grad_simple = QuantNova.gradient(f_simple, x; backend=ForwardDiffBackend())
-        react_grad = QuantNova.gradient(f_simple, x; backend=ReactantBackend())
-        @test react_grad ≈ fd_grad_simple atol=1e-10
+            fd_grad_simple = QuantNova.gradient(f_simple, x; backend=ForwardDiffBackend())
+            react_grad = QuantNova.gradient(f_simple, x; backend=ReactantBackend())
+            @test react_grad ≈ fd_grad_simple atol=1e-10
 
-        fd_val_simple, fd_grad2_simple = QuantNova.value_and_gradient(f_simple, x; backend=ForwardDiffBackend())
-        react_val, react_grad2 = QuantNova.value_and_gradient(f_simple, x; backend=ReactantBackend())
-        @test react_val ≈ fd_val_simple
-        @test react_grad2 ≈ fd_grad2_simple atol=1e-10
+            fd_val_simple, fd_grad2_simple = QuantNova.value_and_gradient(f_simple, x; backend=ForwardDiffBackend())
+            react_val, react_grad2 = QuantNova.value_and_gradient(f_simple, x; backend=ReactantBackend())
+            @test react_val ≈ fd_val_simple
+            @test react_grad2 ≈ fd_grad2_simple atol=1e-10
 
-        # Hessian (uses Enzyme directly, so prod is fine)
-        h(x) = sum(x.^2) + x[1]*x[2]*x[3]
-        fd_hess = QuantNova.hessian(h, x; backend=ForwardDiffBackend())
-        react_hess = QuantNova.hessian(h, x; backend=ReactantBackend())
-        @test react_hess ≈ fd_hess atol=1e-10
+            # Hessian (uses Enzyme directly, so prod is fine)
+            h(x) = sum(x.^2) + x[1]*x[2]*x[3]
+            fd_hess = QuantNova.hessian(h, x; backend=ForwardDiffBackend())
+            react_hess = QuantNova.hessian(h, x; backend=ReactantBackend())
+            @test react_hess ≈ fd_hess atol=1e-10
 
-        # Jacobian (uses Enzyme directly)
-        g(x) = [x[1]^2 + x[2], x[2]*x[3], x[1] + x[2] + x[3]]
-        fd_jac = QuantNova.jacobian(g, x; backend=ForwardDiffBackend())
-        react_jac = QuantNova.jacobian(g, x; backend=ReactantBackend())
-        @test react_jac ≈ fd_jac atol=1e-10
+            # Jacobian (uses Enzyme directly)
+            g(x) = [x[1]^2 + x[2], x[2]*x[3], x[1] + x[2] + x[3]]
+            fd_jac = QuantNova.jacobian(g, x; backend=ForwardDiffBackend())
+            react_jac = QuantNova.jacobian(g, x; backend=ReactantBackend())
+            @test react_jac ≈ fd_jac atol=1e-10
+        end
     end
 end

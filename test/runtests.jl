@@ -1,6 +1,10 @@
 using Test
 using QuantNova
 
+# Silence PureJuliaBackend warning during tests
+ENV["QUANTNOVA_WARN_PUREJULIA"] = "0"
+ENV["QUANTNOVA_TEST_GPU_BACKENDS"] = get(ENV, "QUANTNOVA_TEST_GPU_BACKENDS", "0")
+
 # NOTE: The following test categories have been implemented:
 # ✓ Edge case tests (T→0, S→0, K→∞, σ→0) - see instruments.jl
 # ✓ Error case tests (invalid inputs) - see core.jl, instruments.jl

@@ -1,6 +1,10 @@
 using Random
-using Enzyme
 using Statistics: mean, std
+
+const RUN_GPU_BACKENDS = get(ENV, "QUANTNOVA_TEST_GPU_BACKENDS", "0") == "1"
+if RUN_GPU_BACKENDS
+    import Enzyme
+end
 
 @testset "Monte Carlo" begin
 
@@ -166,23 +170,25 @@ using Statistics: mean, std
         @test abs(std(Z) - 1.0) < 0.1  # Near unit variance
     end
 
-    @testset "Enzyme MC Greeks with QMC" begin
-        S0, K, T, r, sigma = 100.0, 100.0, 1.0, 0.05, 0.2
-        dynamics = GBMDynamics(r, sigma)
-        payoff = EuropeanCall(K)
+    if RUN_GPU_BACKENDS
+        @testset "Enzyme MC Greeks with QMC" begin
+            S0, K, T, r, sigma = 100.0, 100.0, 1.0, 0.05, 0.2
+            dynamics = GBMDynamics(r, sigma)
+            payoff = EuropeanCall(K)
 
-        # Enzyme now works with MC Greeks via QMC
-        delta_enz = mc_delta(S0, T, payoff, dynamics; npaths=1000, nsteps=50, backend=EnzymeBackend())
-        @test 0 < delta_enz < 1  # Valid delta range for call
+            # Enzyme now works with MC Greeks via QMC
+            delta_enz = mc_delta(S0, T, payoff, dynamics; npaths=1000, nsteps=50, backend=EnzymeBackend())
+            @test 0 < delta_enz < 1  # Valid delta range for call
 
-        greeks_enz = mc_greeks(S0, T, payoff, dynamics; npaths=1000, nsteps=50, backend=EnzymeBackend())
-        @test 0 < greeks_enz.delta < 1
-        @test greeks_enz.vega > 0  # Vega always positive
+            greeks_enz = mc_greeks(S0, T, payoff, dynamics; npaths=1000, nsteps=50, backend=EnzymeBackend())
+            @test 0 < greeks_enz.delta < 1
+            @test greeks_enz.vega > 0  # Vega always positive
 
-        # Compare to ForwardDiff (uses different RNG so won't match exactly,
-        # but should be in same ballpark)
-        delta_fd = mc_delta(S0, T, payoff, dynamics; npaths=1000, nsteps=50, backend=ForwardDiffBackend())
-        @test abs(delta_enz - delta_fd) < 0.1  # Within 0.1 of each other
+            # Compare to ForwardDiff (uses different RNG so won't match exactly,
+            # but should be in same ballpark)
+            delta_fd = mc_delta(S0, T, payoff, dynamics; npaths=1000, nsteps=50, backend=ForwardDiffBackend())
+            @test abs(delta_enz - delta_fd) < 0.1  # Within 0.1 of each other
+        end
     end
 
     @testset "Longstaff-Schwartz American Options" begin

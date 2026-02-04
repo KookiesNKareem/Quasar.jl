@@ -151,8 +151,8 @@ function MarketState(; prices, rates, volatilities, timestamp)
 
     # Validate rates are reasonable (-1 to 1, i.e., -100% to 100%)
     for (ccy, r) in rates
-        -1 <= r <= 1 || @warn "Rate for $ccy seems unusual: $r (expected between -100% and 100%)"
         isfinite(r) || throw(ArgumentError("Rate for $ccy must be finite, got $r"))
+        -1 <= r <= 1 || @warn "Rate for $ccy seems unusual: $r (expected between -100% and 100%)"
     end
 
     # Validate volatilities > 0

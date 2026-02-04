@@ -1,4 +1,5 @@
 using Test
+using Dates
 using QuantNova
 using QuantNova.InterestRates
 
@@ -25,6 +26,91 @@ const ir_price = QuantNova.InterestRates.price
             @test Thirty360() isa DayCountConvention
             @test ACTACT() isa DayCountConvention
         end
+
+        @testset "Year fraction with Dates" begin
+            d1 = Date(2024, 1, 1)
+            d2 = Date(2024, 1, 31)  # 30-day span
+            @test year_fraction(d1, d2, ACT360()) ≈ 30 / 360
+            @test year_fraction(d1, d2, ACT365()) ≈ 30 / 365
+            @test year_fraction(d1, d2, Thirty360()) ≈ 30 / 360
+        end
+    end
+
+    @testset "Scheduling and Conventions" begin
+        start_date = Date(2024, 1, 15)
+        end_date = Date(2024, 4, 15)
+        cal = WeekendCalendar()
+        sched = Schedule(start_date, end_date; tenor=Month(1), calendar=cal, bdc=Following())
+
+        @test length(sched) == 4
+        @test first(sched.dates) == adjust_date(start_date, cal, Following())
+        @test last(sched.dates) == adjust_date(end_date, cal, Following())
+
+        periods = schedule_periods(sched)
+        @test length(periods) == 3
+        accruals = accrual_factors(sched, ACT360())
+        @test length(accruals) == 3
+        @test all(a > 0 for a in accruals)
+    end
+
+    @testset "Multi-curve Framework" begin
+        asof = Date(2024, 1, 2)
+        dc = ZeroCurve(0.05)
+        fwd = ZeroCurve(0.06)
+        cs = CurveSet(asof, dc; forwards=Dict(:SOFR3M => fwd))
+        idx = RateIndex(:SOFR3M; tenor=Month(3), day_count=ACT360())
+
+        start_date = Date(2024, 4, 2)
+        end_date = Date(2024, 7, 2)
+        f = forward_rate(cs, idx, start_date, end_date)
+        t1 = year_fraction(asof, start_date, ACT360())
+        t2 = year_fraction(asof, end_date, ACT360())
+        dt = t2 - t1
+        f_expected = (exp(0.06 * dt) - 1) / dt
+
+        @test f ≈ f_expected atol=1e-6
+
+        t = year_fraction(asof, Date(2025, 1, 2), ACT365())
+        @test discount(cs, Date(2025, 1, 2); day_count=ACT365()) ≈ exp(-0.05 * t) atol=1e-6
+    end
+
+    @testset "FRA and Swap Pricing" begin
+        asof = Date(2024, 1, 2)
+        dc = ZeroCurve(0.03)
+        fwd = ZeroCurve(0.04)
+        cs = CurveSet(asof, dc; forwards=Dict(:SOFR3M => fwd))
+        idx = RateIndex(:SOFR3M; tenor=Month(3), day_count=ACT360())
+
+        start_date = Date(2024, 4, 2)
+        end_date = Date(2024, 7, 2)
+
+        f = forward_rate(cs, idx, start_date, end_date)
+        fra = FRA(start_date, end_date, f, idx; notional=1.0, pay_fixed=true)
+        @test abs(ir_price(fra, cs)) < 1e-10
+
+        fra_cf = cashflows(fra, cs)
+        @test fra_cf[1] isa Date
+        @test fra_cf[2] ≈ 0.0 atol=1e-10
+
+        fra_rich = FRA(start_date, end_date, f + 0.001, idx; notional=1.0, pay_fixed=true)
+        @test ir_price(fra_rich, cs) < 0.0
+
+        swap_start = Date(2024, 1, 2)
+        swap_end = Date(2026, 1, 2)
+        sched = Schedule(swap_start, swap_end; tenor=Month(6), calendar=WeekendCalendar(), bdc=ModifiedFollowing())
+
+        fixed_leg = FixedLeg(sched, 0.0; day_count=Thirty360(), notional=1.0, pay=true)
+        float_leg = FloatLeg(sched, idx; spread=0.0, notional=1.0, pay=false)
+        swap = Swap(fixed_leg, float_leg)
+
+        par = par_swap_rate(swap, cs)
+        swap_par = Swap(swap_start, swap_end, par, idx; tenor=Month(6), calendar=WeekendCalendar(),
+                        bdc=ModifiedFollowing(), fixed_day_count=Thirty360(), notional=1.0, pay_fixed=true)
+        @test abs(ir_price(swap_par, cs)) < 1e-8
+
+        flows = cashflows(swap_par, cs)
+        @test length(flows.fixed) == length(schedule_periods(sched))
+        @test length(flows.float) == length(schedule_periods(sched))
     end
 
     @testset "Nelson-Siegel Curve" begin
@@ -181,6 +267,19 @@ const ir_price = QuantNova.InterestRates.price
         end
     end
 
+    @testset "Bucketed PV01" begin
+        bond = FixedRateBond(5.0, 0.04, 2, 100.0)
+        times = [0.0, 1.0, 2.0, 3.0, 5.0]
+        rates = [0.02, 0.022, 0.025, 0.028, 0.03]
+        curve = ZeroCurve(times, rates)
+
+        result = bucketed_pv01(bond, curve; bump=1e-4)
+        buckets = result.buckets
+
+        @test length(buckets) == length(times) - 1
+        @test all(v < 0 for v in values(buckets))
+    end
+
     @testset "Yield Curves" begin
         @testset "Flat curve" begin
             rate = 0.05
@@ -255,6 +354,80 @@ const ir_price = QuantNova.InterestRates.price
 
         # Curve should be monotonically decreasing
         @test discount(curve, 1.0) > discount(curve, 2.0) > discount(curve, 5.0)
+    end
+
+    @testset "Multi-Curve Bootstrapping" begin
+        asof = Date(2024, 1, 2)
+        idx = RateIndex(:SOFR3M; tenor=Month(3), day_count=ACT360())
+
+        ois_quotes = [
+            OISDepositQuote(asof, Date(2024, 2, 2), 0.05),
+            OISSwapQuote(asof, Date(2024, 7, 2), 0.05; fixed_frequency=1, fixed_day_count=ACT360())
+        ]
+
+        dc = bootstrap_ois_curve(ois_quotes; asof=asof)
+
+        # OIS deposit reprices
+        dep = ois_quotes[1]
+        accrual_dep = year_fraction(dep.start_date, dep.end_date, dep.day_count)
+        df_start = discount(dc, year_fraction(asof, dep.start_date, ACT365()))
+        df_end = discount(dc, year_fraction(asof, dep.end_date, ACT365()))
+        implied_dep = (df_start / df_end - 1) / accrual_dep
+        @test implied_dep ≈ dep.rate atol=1e-6
+
+        # OIS swap reprices
+        swap_q = ois_quotes[2]
+        sched = Schedule(swap_q.start_date, swap_q.maturity_date;
+                         tenor=Month(12 ÷ swap_q.fixed_frequency),
+                         calendar=swap_q.calendar, bdc=swap_q.bdc)
+        annuity = sum(
+            year_fraction(d1, d2, swap_q.fixed_day_count) *
+            discount(dc, year_fraction(asof, d2, ACT365()))
+            for (d1, d2) in schedule_periods(sched)
+        )
+        df_T = discount(dc, year_fraction(asof, swap_q.maturity_date, ACT365()))
+        par_rate = (1.0 - df_T) / annuity
+        @test par_rate ≈ swap_q.fixed_rate atol=1e-6
+
+        fwd_quotes = [
+            FRAQuote(asof, Date(2024, 4, 2), 0.05, idx),
+            FRAQuote(Date(2024, 4, 2), Date(2024, 7, 2), 0.055, idx),
+            FRAQuote(Date(2024, 7, 2), Date(2024, 10, 2), 0.057, idx),
+            IRSwapQuote(asof, Date(2025, 1, 2), 0.06, idx; fixed_frequency=2, fixed_day_count=Thirty360())
+        ]
+
+        fc = bootstrap_forward_curve(fwd_quotes; asof=asof, discount_curve=dc)
+
+        # FRA reprices
+        fra_q = fwd_quotes[2]
+        t1 = year_fraction(asof, fra_q.start_date, idx.day_count)
+        t2 = year_fraction(asof, fra_q.end_date, idx.day_count)
+        fwd = forward_rate(fc, t1, t2)
+        @test fwd ≈ fra_q.rate atol=1e-6
+
+        # IRS reprices
+        irs_q = fwd_quotes[4]
+        fixed_sched = Schedule(irs_q.start_date, irs_q.maturity_date;
+                               tenor=Month(12 ÷ irs_q.fixed_frequency),
+                               calendar=irs_q.calendar, bdc=irs_q.bdc)
+        float_sched = Schedule(irs_q.start_date, irs_q.maturity_date;
+                               tenor=idx.tenor, calendar=irs_q.calendar, bdc=irs_q.bdc)
+
+        fixed_annuity = sum(
+            year_fraction(d1, d2, irs_q.fixed_day_count) *
+            discount(dc, year_fraction(asof, d2, ACT365()))
+            for (d1, d2) in schedule_periods(fixed_sched)
+        )
+        float_pv = sum(
+            forward_rate(fc,
+                         year_fraction(asof, d1, idx.day_count),
+                         year_fraction(asof, d2, idx.day_count)) *
+            year_fraction(d1, d2, idx.day_count) *
+            discount(dc, year_fraction(asof, payment_date(idx, d2), ACT365()))
+            for (d1, d2) in schedule_periods(float_sched)
+        )
+        par_swap = float_pv / fixed_annuity
+        @test par_swap ≈ irs_q.fixed_rate atol=1e-6
     end
 
     @testset "Bonds" begin
