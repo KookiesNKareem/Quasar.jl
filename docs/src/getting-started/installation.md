@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Julia 1.11 or later
+- Julia 1.10 or later
 - For GPU support: CUDA-capable GPU (optional)
 
 ## Basic Installation
